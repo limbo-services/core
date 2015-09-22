@@ -11,18 +11,23 @@ import (
 var paramPool sync.Pool
 var matchPool sync.Pool
 var framePool sync.Pool
+var runtimePool sync.Pool
 
 func init() {
 	paramPool.New = func() interface{} {
-		return make([]param, 0, 1024)
+		return &paramBuf{make([]param, 0, 1024)}
 	}
 
 	matchPool.New = func() interface{} {
-		return make([]match, 0, 128)
+		return &matchBuf{make([]match, 0, 128)}
 	}
 
 	framePool.New = func() interface{} {
-		return make([]frame, 0, 128)
+		return &frameBuf{make([]frame, 0, 128)}
+	}
+
+	runtimePool.New = func() interface{} {
+		return &runtime{}
 	}
 }
 
@@ -39,6 +44,18 @@ type runtime struct {
 	length int
 	cur    byte
 	end    bool
+}
+
+type paramBuf struct {
+	items []param
+}
+
+type frameBuf struct {
+	items []frame
+}
+
+type matchBuf struct {
+	items []match
 }
 
 type instruction interface {
@@ -69,12 +86,10 @@ type jumpPointer struct {
 }
 
 func runtimeExec(program []instruction, ctx context.Context, rw http.ResponseWriter, req *http.Request) bool {
-	var matches = matchPool.Get().([]match)
-	defer matchPool.Put(matches[:0])
+	var matches = matchPool.Get().(*matchBuf)
+	defer matchPool.Put(matches)
 
-	matches = runtimeMatch(req.URL.Path, program, matches)
-
-	for _, match := range matches {
+	for _, match := range runtimeMatch(req.URL.Path, program, matches.items) {
 		cctx := context.WithValue(ctx, paramsKey, match.params)
 		if match.ServeHTTP(cctx, rw, req) {
 			return true
@@ -85,30 +100,39 @@ func runtimeExec(program []instruction, ctx context.Context, rw http.ResponseWri
 }
 
 func runtimeExecTest(path string, program []instruction) {
-	var matches = matchPool.Get().([]match)
-	defer matchPool.Put(matches[:0])
-	matches = runtimeMatch(path, program, matches)
+	var matches = matchPool.Get().(*matchBuf)
+	defer matchPool.Put(matches)
+	runtimeMatch(path, program, matches.items)
 }
 
 func runtimeMatch(path string, program []instruction, matches []match) []match {
-	r := runtime{
+	var (
+		params = paramPool.Get().(*paramBuf)
+		frames = framePool.Get().(*frameBuf)
+		r      = runtimePool.Get().(*runtime)
+	)
+
+	*r = runtime{
 		program: program,
 		path:    path,
 		length:  len(path),
-		params:  paramPool.Get().([]param)[:0],
-		frames:  framePool.Get().([]frame)[:0],
+		params:  params.items,
+		frames:  frames.items,
 		matches: matches,
 	}
-
-	defer paramPool.Put(r.params)
-	defer framePool.Put(r.frames)
 
 	r.SetOffset(0)
 	r.Exec()
 
-	sort.Sort(sortedMatches(r.matches))
+	sort.Sort((*sortedMatches)(r))
 
-	return r.matches
+	matches = r.matches
+	*r = runtime{}
+	paramPool.Put(params)
+	framePool.Put(frames)
+	runtimePool.Put(r)
+
+	return matches
 }
 
 func (c *runtime) Exec() {
@@ -197,8 +221,8 @@ func (c *runtime) SetOffset(offset int) bool {
 	return false
 }
 
-type sortedMatches []match
+type sortedMatches runtime
 
-func (s sortedMatches) Len() int           { return len(s) }
-func (s sortedMatches) Less(i, j int) bool { return s[i].id < s[j].id }
-func (s sortedMatches) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (r *sortedMatches) Len() int           { return len(r.matches) }
+func (r *sortedMatches) Less(i, j int) bool { return r.matches[i].id < r.matches[j].id }
+func (r *sortedMatches) Swap(i, j int)      { r.matches[i], r.matches[j] = r.matches[j], r.matches[i] }
