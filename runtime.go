@@ -8,26 +8,15 @@ import (
 	"golang.org/x/net/context"
 )
 
-var paramPool sync.Pool
-var matchPool sync.Pool
-var framePool sync.Pool
 var runtimePool sync.Pool
 
 func init() {
-	paramPool.New = func() interface{} {
-		return &paramBuf{make([]param, 0, 1024)}
-	}
-
-	matchPool.New = func() interface{} {
-		return &matchBuf{make([]match, 0, 128)}
-	}
-
-	framePool.New = func() interface{} {
-		return &frameBuf{make([]frame, 0, 128)}
-	}
-
 	runtimePool.New = func() interface{} {
-		return &runtime{}
+		return &runtime{
+			params:  make([]param, 0, 1024),
+			frames:  make([]frame, 0, 128),
+			matches: make([]match, 0, 128),
+		}
 	}
 }
 
@@ -44,18 +33,6 @@ type runtime struct {
 	length int
 	cur    byte
 	end    bool
-}
-
-type paramBuf struct {
-	items []param
-}
-
-type frameBuf struct {
-	items []frame
-}
-
-type matchBuf struct {
-	items []match
 }
 
 type instruction interface {
@@ -85,11 +62,31 @@ type jumpPointer struct {
 	keepFrames int
 }
 
-func runtimeExec(program []instruction, ctx context.Context, rw http.ResponseWriter, req *http.Request) bool {
-	var matches = matchPool.Get().(*matchBuf)
-	defer matchPool.Put(matches)
+func newRuntime(path string, program []instruction) *runtime {
+	r := runtimePool.Get().(*runtime)
+	r.path = path
+	r.length = len(path)
+	r.program = program
+	r.SetOffset(0)
+	return r
+}
 
-	for _, match := range runtimeMatch(req.URL.Path, program, matches.items) {
+func (r *runtime) free() {
+	*r = runtime{
+		params:  r.params[:0],
+		frames:  r.frames[:0],
+		matches: r.matches[:0],
+	}
+	runtimePool.Put(r)
+}
+
+func runtimeExec(program []instruction, ctx context.Context, rw http.ResponseWriter, req *http.Request) bool {
+	r := newRuntime(req.URL.Path, program)
+	defer r.free()
+
+	runtimeMatch(r)
+
+	for _, match := range r.matches {
 		cctx := context.WithValue(ctx, paramsKey, match.params)
 		if match.ServeHTTP(cctx, rw, req) {
 			return true
@@ -100,39 +97,14 @@ func runtimeExec(program []instruction, ctx context.Context, rw http.ResponseWri
 }
 
 func runtimeExecTest(path string, program []instruction) {
-	var matches = matchPool.Get().(*matchBuf)
-	defer matchPool.Put(matches)
-	runtimeMatch(path, program, matches.items)
+	r := newRuntime(path, program)
+	defer r.free()
+	runtimeMatch(r)
 }
 
-func runtimeMatch(path string, program []instruction, matches []match) []match {
-	var (
-		params = paramPool.Get().(*paramBuf)
-		frames = framePool.Get().(*frameBuf)
-		r      = runtimePool.Get().(*runtime)
-	)
-
-	*r = runtime{
-		program: program,
-		path:    path,
-		length:  len(path),
-		params:  params.items,
-		frames:  frames.items,
-		matches: matches,
-	}
-
-	r.SetOffset(0)
+func runtimeMatch(r *runtime) {
 	r.Exec()
-
 	sort.Sort((*sortedMatches)(r))
-
-	matches = r.matches
-	*r = runtime{}
-	paramPool.Put(params)
-	framePool.Put(frames)
-	runtimePool.Put(r)
-
-	return matches
 }
 
 func (c *runtime) Exec() {

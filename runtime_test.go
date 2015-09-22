@@ -26,11 +26,15 @@ func ExampleRuntime() {
 	}
 
 	for _, url := range urls {
-		m := runtimeMatch(url, prog, nil)
+		r := newRuntime(url, prog)
+		runtimeMatch(r)
+
 		fmt.Printf("match %q:\n", url)
-		for _, m := range m {
+		for _, m := range r.matches {
 			fmt.Printf("- %v\n", m)
 		}
+
+		r.free()
 	}
 
 	// Output:
