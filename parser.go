@@ -4,6 +4,8 @@ import (
 	"fmt"
 	"regexp"
 	"strconv"
+
+	"github.com/juju/errors"
 )
 
 func parse(pattern string) ([]token, error) {
@@ -102,7 +104,7 @@ func (p *parser) Parse() ([]token, error) {
 	p.nextNumericParam = 1
 
 	if p.cur != '/' {
-		p.setError(fmt.Errorf("expected a '/'"))
+		p.setError(errors.Errorf("expected a '/'"))
 	}
 
 LOOP:
@@ -163,7 +165,7 @@ func (p *parser) parseEpsilon() {
 		p.pushToken(token{kind: tEPSILON, epsilon: '/'})
 
 	default:
-		p.setError(fmt.Errorf("unexpected character %q", p.cur))
+		p.setError(errors.Errorf("unexpected character %q", p.cur))
 
 	}
 }
@@ -215,7 +217,7 @@ func (p *parser) parseVariable() {
 	}
 
 	if p.cur != '}' {
-		p.setError(fmt.Errorf("expected '}'"))
+		p.setError(errors.Errorf("expected '}'"))
 		return
 	}
 	p.step()
@@ -230,7 +232,7 @@ func (p *parser) parseVariable() {
 	}
 
 	if p.paramNames[name] {
-		p.setError(fmt.Errorf("param name is already used: %q", name))
+		p.setError(errors.Errorf("param name is already used: %q", name))
 		return
 	}
 
@@ -264,7 +266,7 @@ LOOP:
 			return "", false
 
 		case rEND:
-			p.setError(fmt.Errorf("invallid pattern"))
+			p.setError(errors.Errorf("invallid pattern"))
 			return "", false
 
 		default:
@@ -311,7 +313,7 @@ LOOP:
 			return "", false
 
 		case rEND:
-			p.setError(fmt.Errorf("invallid pattern"))
+			p.setError(errors.Errorf("invallid pattern"))
 			return "", false
 
 		default:
@@ -350,7 +352,7 @@ func (p *parser) parseVariableRepeat() (min, max int, ok bool) {
 		} else {
 			min, ok = p.parseInt()
 			if !ok {
-				p.setError(fmt.Errorf("expected a number"))
+				p.setError(errors.Errorf("expected a number"))
 				return 0, 0, false
 			}
 
@@ -376,7 +378,7 @@ func (p *parser) parseVariableRepeat() (min, max int, ok bool) {
 			// {min,max}
 			max, ok = p.parseInt()
 			if !ok {
-				p.setError(fmt.Errorf("expected a number"))
+				p.setError(errors.Errorf("expected a number"))
 				return 0, 0, false
 			}
 
@@ -385,7 +387,7 @@ func (p *parser) parseVariableRepeat() (min, max int, ok bool) {
 				return min, max, true
 			}
 
-			p.setError(fmt.Errorf("invalid repeat pattern"))
+			p.setError(errors.Errorf("invalid repeat pattern"))
 			return 0, 0, false
 		}
 
@@ -397,7 +399,7 @@ func (p *parser) parseVariableRepeat() (min, max int, ok bool) {
 
 	}
 
-	p.setError(fmt.Errorf("invalid repeat pattern"))
+	p.setError(errors.Errorf("invalid repeat pattern"))
 	return 0, 0, false
 }
 
