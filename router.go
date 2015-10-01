@@ -3,6 +3,7 @@ package router
 import (
 	"net/http"
 	"sync"
+	"unsafe"
 
 	"golang.org/x/net/context"
 )
@@ -119,4 +120,24 @@ func (r *Router) ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *htt
 	}
 
 	return runtimeExec(program, ctx, rw, req)
+}
+
+func (r *Router) MemorySize() int {
+	if r == nil {
+		return 0
+	}
+	const sizeRouter = int(unsafe.Sizeof(Router{}))
+	const sizeRoute = int(unsafe.Sizeof(route{}))
+
+	s := sizeRouter
+	s += len(r.routes) * sizeRoute
+	s += len(r.program) * 16
+	for _, r := range r.routes {
+		s += len(r.pattern)
+	}
+	for _, i := range r.program {
+		s += i.MemorySize()
+	}
+
+	return s
 }

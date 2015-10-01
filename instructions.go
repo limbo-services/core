@@ -3,6 +3,7 @@ package router
 import (
 	"fmt"
 	"regexp"
+	"unsafe"
 )
 
 type instMatchByte struct {
@@ -17,6 +18,14 @@ func (i *instMatchByte) Exec(ctx *runtime) {
 	} else {
 		ctx.Jump(i.onErr)
 	}
+}
+
+func (i *instMatchByte) MemorySize() int {
+	if i == nil {
+		return 0
+	}
+	const size = int(unsafe.Sizeof(instMatchByte{}))
+	return size
 }
 
 type instMatchBytes struct {
@@ -40,12 +49,34 @@ func (i *instMatchBytes) Exec(ctx *runtime) {
 	}
 }
 
+func (i *instMatchBytes) MemorySize() int {
+	if i == nil {
+		return 0
+	}
+	const size = int(unsafe.Sizeof(instMatchBytes{}))
+	return size + len(i.b)
+}
+
 type instMatchVariable struct {
 	names      []string
 	pattern    *regexp.Regexp
 	min, max   int
 	frameCount int
 	onErr      jumpPointer
+}
+
+func (i *instMatchVariable) MemorySize() int {
+	if i == nil {
+		return 0
+	}
+	const size = int(unsafe.Sizeof(instMatchVariable{}))
+	s := size
+	s += len(i.names) * 16
+	for _, n := range i.names {
+		s += len(n)
+	}
+
+	return s
 }
 
 func (i *instMatchVariable) Exec(ctx *runtime) {
@@ -143,6 +174,14 @@ type instMatchEpsilon struct {
 	onErr      jumpPointer
 }
 
+func (i *instMatchEpsilon) MemorySize() int {
+	if i == nil {
+		return 0
+	}
+	const size = int(unsafe.Sizeof(instMatchEpsilon{}))
+	return size
+}
+
 func (i *instMatchEpsilon) Exec(ctx *runtime) {
 	idx := -1
 
@@ -183,6 +222,14 @@ type instMatchEnd struct {
 	handlers   []handler
 	frameCount int
 	jump       jumpPointer
+}
+
+func (i *instMatchEnd) MemorySize() int {
+	if i == nil {
+		return 0
+	}
+	const size = int(unsafe.Sizeof(instMatchEnd{}))
+	return size + (len(i.handlers) * 16)
 }
 
 func (i *instMatchEnd) Exec(ctx *runtime) {

@@ -39,6 +39,7 @@ type instruction interface {
 	Frames() int
 	Jump() *jumpPointer
 	Exec(*runtime)
+	MemorySize() int
 }
 
 type frame struct {
