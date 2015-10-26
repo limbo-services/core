@@ -45,6 +45,12 @@ type Handler interface {
 	ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) bool
 }
 
+type HandlerFunc func(ctx context.Context, rw http.ResponseWriter, req *http.Request) bool
+
+func (h HandlerFunc) ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) bool {
+	return h(ctx, rw, req)
+}
+
 func (c *compiler) Insert(pattern string, h Handler) error {
 	tokens, err := parse(pattern)
 	if err != nil {
