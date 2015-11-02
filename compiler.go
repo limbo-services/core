@@ -42,12 +42,12 @@ type handler struct {
 }
 
 type Handler interface {
-	ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) bool
+	ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) error
 }
 
-type HandlerFunc func(ctx context.Context, rw http.ResponseWriter, req *http.Request) bool
+type HandlerFunc func(ctx context.Context, rw http.ResponseWriter, req *http.Request) error
 
-func (h HandlerFunc) ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) bool {
+func (h HandlerFunc) ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) error {
 	return h(ctx, rw, req)
 }
 

@@ -1,11 +1,17 @@
 package router
 
 import (
+	"errors"
 	"net/http"
 	"sort"
 	"sync"
 
 	"golang.org/x/net/context"
+)
+
+var (
+	Pass          = errors.New("pass")
+	ErrNotHandled = errors.New("request not handled")
 )
 
 var runtimePool sync.Pool
@@ -81,7 +87,7 @@ func (r *runtime) free() {
 	runtimePool.Put(r)
 }
 
-func runtimeExec(program []instruction, ctx context.Context, rw http.ResponseWriter, req *http.Request) bool {
+func runtimeExec(program []instruction, ctx context.Context, rw http.ResponseWriter, req *http.Request) error {
 	r := newRuntime(req.URL.Path, program)
 	defer r.free()
 
@@ -89,12 +95,16 @@ func runtimeExec(program []instruction, ctx context.Context, rw http.ResponseWri
 
 	for _, match := range r.matches {
 		cctx := context.WithValue(ctx, paramsKey, match.params)
-		if match.ServeHTTP(cctx, rw, req) {
-			return true
+		err := match.ServeHTTP(cctx, rw, req)
+		if err == nil {
+			return nil
+		}
+		if err != Pass {
+			return err
 		}
 	}
 
-	return false
+	return ErrNotHandled
 }
 
 func runtimeExecTest(path string, program []instruction) {

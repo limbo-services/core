@@ -113,7 +113,7 @@ func (r *Router) getProgram() ([]instruction, error) {
 	return r.getProgram()
 }
 
-func (r *Router) ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) bool {
+func (r *Router) ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) error {
 	program, err := r.getProgram()
 	if err != nil {
 		panic(err)
