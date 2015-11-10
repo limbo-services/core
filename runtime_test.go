@@ -22,6 +22,7 @@ func ExampleRuntime() {
 
 	var urls = []string{
 		"/admin//auth",
+		"/about-office",
 		"/about-office/test",
 	}
 
@@ -43,6 +44,10 @@ func ExampleRuntime() {
 	// - {{2 auth} []}
 	// - {{3 admin} [{1 auth}]}
 	// - {{8 public} [{1 admin} {1 auth}]}
+	// match "/about-office":
+	// - {{5 about-prepass} [{prepass about-office}]}
+	// - {{7 about} []}
+	// - {{8 public} [{1 about-office}]}
 	// match "/about-office/test":
 	// - {{5 about-prepass} [{prepass about-office} {1 test}]}
 	// - {{7 about} [{1 test}]}

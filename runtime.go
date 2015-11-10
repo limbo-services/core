@@ -1,11 +1,11 @@
 package router
 
 import (
-	"errors"
 	"net/http"
 	"sort"
 	"sync"
 
+	"github.com/juju/errors"
 	"golang.org/x/net/context"
 )
 
@@ -13,6 +13,10 @@ var (
 	Pass          = errors.New("pass")
 	ErrNotHandled = errors.New("request not handled")
 )
+
+func IsPass(err error) bool {
+	return errors.Cause(err) == Pass
+}
 
 var runtimePool sync.Pool
 
@@ -99,7 +103,7 @@ func runtimeExec(program []instruction, ctx context.Context, rw http.ResponseWri
 		if err == nil {
 			return nil
 		}
-		if err != Pass {
+		if !IsPass(err) {
 			return err
 		}
 	}

@@ -61,7 +61,7 @@ func (p Params) GetAll(key string) []string {
 }
 
 // Add a route to the router
-func (r *Router) Add(pattern string, handlers ...Handler) {
+func (r *Router) Add(method, pattern string, handlers ...Handler) *Router {
 	r.mtx.Lock()
 	defer r.mtx.Unlock()
 
@@ -69,8 +69,201 @@ func (r *Router) Add(pattern string, handlers ...Handler) {
 	r.err = nil
 
 	for _, h := range handlers {
-		r.routes = append(r.routes, route{pattern, h})
+		r.routes = append(r.routes, route{pattern, whenMethodIs(method, h)})
 	}
+
+	return r
+}
+
+// Addf a route to the router
+func (r *Router) Addf(method, pattern string, handlers ...HandlerFunc) *Router {
+	r.mtx.Lock()
+	defer r.mtx.Unlock()
+
+	r.program = nil
+	r.err = nil
+
+	for _, h := range handlers {
+		r.routes = append(r.routes, route{pattern, whenMethodIs(method, h)})
+	}
+
+	return r
+}
+
+func (r *Router) ANY(pattern string, handlers ...Handler) *Router {
+	return r.Add("*", pattern, handlers...)
+}
+
+func (r *Router) ANYf(pattern string, handlers ...HandlerFunc) *Router {
+	return r.Addf("*", pattern, handlers...)
+}
+
+func (r *Router) GET(pattern string, handlers ...Handler) *Router {
+	return r.Add("GET", pattern, handlers...)
+}
+
+func (r *Router) GETf(pattern string, handlers ...HandlerFunc) *Router {
+	return r.Addf("GET", pattern, handlers...)
+}
+
+func (r *Router) POS(pattern string, handlers ...Handler) *Router {
+	return r.Add("POST", pattern, handlers...)
+}
+
+func (r *Router) POSf(pattern string, handlers ...HandlerFunc) *Router {
+	return r.Addf("POST", pattern, handlers...)
+}
+
+func (r *Router) PAT(pattern string, handlers ...Handler) *Router {
+	return r.Add("PATCH", pattern, handlers...)
+}
+
+func (r *Router) PATf(pattern string, handlers ...HandlerFunc) *Router {
+	return r.Addf("PATCH", pattern, handlers...)
+}
+
+func (r *Router) PUT(pattern string, handlers ...Handler) *Router {
+	return r.Add("PUT", pattern, handlers...)
+}
+
+func (r *Router) PUTf(pattern string, handlers ...HandlerFunc) *Router {
+	return r.Addf("PUT", pattern, handlers...)
+}
+
+func (r *Router) DEL(pattern string, handlers ...Handler) *Router {
+	return r.Add("DELETE", pattern, handlers...)
+}
+
+func (r *Router) DELf(pattern string, handlers ...HandlerFunc) *Router {
+	return r.Addf("DELETE", pattern, handlers...)
+}
+
+type Filter interface {
+	ApplyFilter(Handler) Handler
+}
+
+type FilterFunc func(Handler) Handler
+
+func (f FilterFunc) ApplyFilter(handler Handler) Handler {
+	return f(handler)
+}
+
+type FilteredRouter struct {
+	router  *Router
+	filters []Filter
+}
+
+func (r *Router) Filter(filters ...Filter) *FilteredRouter {
+	return &FilteredRouter{
+		router:  r,
+		filters: filters,
+	}
+}
+
+func (r *Router) Filterf(filters ...FilterFunc) *FilteredRouter {
+	var f = make([]Filter, len(filters))
+	for i, ff := range filters {
+		f[i] = ff
+	}
+
+	return &FilteredRouter{
+		router:  r,
+		filters: f,
+	}
+}
+
+func (r *FilteredRouter) Filter(filters ...Filter) *FilteredRouter {
+	return &FilteredRouter{
+		router:  r.router,
+		filters: append(r.filters, filters...),
+	}
+}
+
+func (r *FilteredRouter) Filterf(filters ...FilterFunc) *FilteredRouter {
+	var f = make([]Filter, len(filters))
+	for i, ff := range filters {
+		f[i] = ff
+	}
+
+	return &FilteredRouter{
+		router:  r.router,
+		filters: append(r.filters, f...),
+	}
+}
+
+// Add a route to the router
+func (r *FilteredRouter) Add(method, pattern string, handlers ...Handler) *FilteredRouter {
+	for i, handler := range handlers {
+		handlers[i] = r.applyFilters(handler)
+	}
+	r.router.Add(method, pattern, handlers...)
+	return r
+}
+
+// Addf a route to the router
+func (r *FilteredRouter) Addf(method, pattern string, handlers ...HandlerFunc) *FilteredRouter {
+	var h = make([]Handler, len(handlers))
+	for i, handler := range handlers {
+		h[i] = r.applyFilters(handler)
+	}
+	r.router.Add(method, pattern, h...)
+	return r
+}
+
+func (r *FilteredRouter) ANY(pattern string, handlers ...Handler) *FilteredRouter {
+	return r.Add("*", pattern, handlers...)
+}
+
+func (r *FilteredRouter) ANYf(pattern string, handlers ...HandlerFunc) *FilteredRouter {
+	return r.Addf("*", pattern, handlers...)
+}
+
+func (r *FilteredRouter) GET(pattern string, handlers ...Handler) *FilteredRouter {
+	return r.Add("GET", pattern, handlers...)
+}
+
+func (r *FilteredRouter) GETf(pattern string, handlers ...HandlerFunc) *FilteredRouter {
+	return r.Addf("GET", pattern, handlers...)
+}
+
+func (r *FilteredRouter) POS(pattern string, handlers ...Handler) *FilteredRouter {
+	return r.Add("POST", pattern, handlers...)
+}
+
+func (r *FilteredRouter) POSf(pattern string, handlers ...HandlerFunc) *FilteredRouter {
+	return r.Addf("POST", pattern, handlers...)
+}
+
+func (r *FilteredRouter) PAT(pattern string, handlers ...Handler) *FilteredRouter {
+	return r.Add("PATCH", pattern, handlers...)
+}
+
+func (r *FilteredRouter) PATf(pattern string, handlers ...HandlerFunc) *FilteredRouter {
+	return r.Addf("PATCH", pattern, handlers...)
+}
+
+func (r *FilteredRouter) PUT(pattern string, handlers ...Handler) *FilteredRouter {
+	return r.Add("PUT", pattern, handlers...)
+}
+
+func (r *FilteredRouter) PUTf(pattern string, handlers ...HandlerFunc) *FilteredRouter {
+	return r.Addf("PUT", pattern, handlers...)
+}
+
+func (r *FilteredRouter) DEL(pattern string, handlers ...Handler) *FilteredRouter {
+	return r.Add("DELETE", pattern, handlers...)
+}
+
+func (r *FilteredRouter) DELf(pattern string, handlers ...HandlerFunc) *FilteredRouter {
+	return r.Addf("DELETE", pattern, handlers...)
+}
+
+func (r *FilteredRouter) applyFilters(handler Handler) Handler {
+	for i := len(r.filters) - 1; i >= 0; i-- {
+		filter := r.filters[i]
+		handler = filter.ApplyFilter(handler)
+	}
+	return handler
 }
 
 // Compile the router rules

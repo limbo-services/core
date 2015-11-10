@@ -145,7 +145,7 @@ func assert(t *testing.T, err error) {
 
 type stringHandler string
 
-func (h stringHandler) ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) bool {
+func (h stringHandler) ServeHTTP(ctx context.Context, rw http.ResponseWriter, req *http.Request) error {
 	rw.Write([]byte(string(h) + "\n"))
-	return true
+	return Pass
 }
