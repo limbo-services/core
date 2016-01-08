@@ -4,6 +4,7 @@ import (
 	"github.com/gogo/protobuf/vanity"
 	"github.com/gogo/protobuf/vanity/command"
 
+	_ "github.com/fd/featherhead/tools/protoc-gen-gofh/plugins/svcauth"
 	_ "github.com/fd/featherhead/tools/protoc-gen-gofh/plugins/svcpanic"
 )
 
