@@ -9,7 +9,7 @@ import (
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 
-	fhannotations "github.com/fd/featherhead/proto"
+	grpcutil "github.com/fd/featherhead/pkg/api/grpcutil"
 )
 
 // Paths for packages used by code generated in this file,
@@ -19,7 +19,7 @@ const (
 	grpcPkgPath          = "google.golang.org/grpc"
 	grpcCodesPkgPath     = "google.golang.org/grpc/codes"
 	grpcMetadataPkgPath  = "google.golang.org/grpc/metadata"
-	fhannotationsPkgPath = "github.com/fd/featherhead/proto"
+	grpcutilPkgPath = "github.com/fd/featherhead/pkg/api/grpcutil"
 )
 
 func init() {
@@ -85,7 +85,7 @@ func (g *svcauth) GenerateImports(file *generator.FileDescriptor) {
 	g.gen.PrintImport("context_svcauth", contextPkgPath)
 	g.gen.PrintImport("grpc_svcauth", grpcPkgPath)
 	g.gen.PrintImport("codes_svcauth", grpcCodesPkgPath)
-	g.gen.PrintImport("fhannotations_svcauth", fhannotationsPkgPath)
+	g.gen.PrintImport("grpcutil_svcauth", grpcutilPkgPath)
 	g.gen.PrintImport("metadata_svcauth", grpcMetadataPkgPath)
 }
 
@@ -101,7 +101,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 	innerServerType := servName + "Server"
 	serverType := unexport(servName) + "ServerAuthGuard"
 	g.P("type ", serverType, " struct {")
-	g.P("authenticator fhannotations_svcauth.Authenticator")
+	g.P("authenticator grpcutil_svcauth.Authenticator")
 	g.P("inner ", innerServerType)
 	g.P("}")
 	g.P()
@@ -109,7 +109,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 	g.P("var _ ", innerServerType, " = (*", serverType, ")(nil)")
 	g.P()
 
-	g.P("func New", servName, "ServerAuthGuard(inner ", innerServerType, ", auth fhannotations_svcauth.Authenticator) ", innerServerType, " {")
+	g.P("func New", servName, "ServerAuthGuard(inner ", innerServerType, ", auth grpcutil_svcauth.Authenticator) ", innerServerType, " {")
 	g.P("return &", serverType, "{inner: inner, authenticator: auth}")
 	g.P("}")
 	g.P()
@@ -117,23 +117,23 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 	// Server handler implementations.
 	for _, method := range service.Method {
 		var (
-			authnInfo *fhannotations.AuthnRule
-			authzInfo *fhannotations.AuthzRule
+			authnInfo *grpcutil.AuthnRule
+			authzInfo *grpcutil.AuthzRule
 		)
 
 		{ // authn
-			v, _ := proto.GetExtension(method.Options, fhannotations.E_Authn)
-			authnInfo, _ = v.(*fhannotations.AuthnRule)
+			v, _ := proto.GetExtension(method.Options, grpcutil.E_Authn)
+			authnInfo, _ = v.(*grpcutil.AuthnRule)
 			if authnInfo == nil {
-				authnInfo = &fhannotations.AuthnRule{}
-				authnInfo.Gateway = fhannotations.AuthnRule_DENY
+				authnInfo = &grpcutil.AuthnRule{}
+				authnInfo.Gateway = grpcutil.AuthnRule_DENY
 			}
 			authnInfo.SetDefaults()
 		}
 
 		{ // authz
-			v, _ := proto.GetExtension(method.Options, fhannotations.E_Authz)
-			authzInfo, _ = v.(*fhannotations.AuthzRule)
+			v, _ := proto.GetExtension(method.Options, grpcutil.E_Authz)
+			authzInfo, _ = v.(*grpcutil.AuthzRule)
 			if authzInfo != nil {
 				authzInfo.SetDefaults()
 			}
@@ -142,15 +142,15 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		authnRuleName := g.generateAuthnRuleName(servName, method)
 		authzRuleName := g.generateAuthzRuleName(servName, method)
 		g.P("var (")
-		g.P(authnRuleName, " *fhannotations_svcauth.AuthnRule = ", replaceFhAnnotationNames(authnInfo.GoString()))
-		g.P(authzRuleName, " *fhannotations_svcauth.AuthzRule = ", replaceFhAnnotationNames(authzInfo.GoString()))
+		g.P(authnRuleName, " *grpcutil_svcauth.AuthnRule = ", replaceFhAnnotationNames(authnInfo.GoString()))
+		g.P(authzRuleName, " *grpcutil_svcauth.AuthzRule = ", replaceFhAnnotationNames(authzInfo.GoString()))
 		g.P(")")
 		g.P("")
 
 		g.P("func (s *", serverType, ") ", g.generateServerSignature(servName, method), " {")
 
 		g.P("var (")
-		g.P("info fhannotations_svcauth.AuthInfo")
+		g.P("info grpcutil_svcauth.AuthInfo")
 		if method.GetServerStreaming() || method.GetClientStreaming() {
 			g.P("ctx = stream.Context()")
 		}
@@ -265,5 +265,5 @@ func (g *svcauth) generateAuthzRuleName(servName string, method *pb.MethodDescri
 }
 
 func replaceFhAnnotationNames(s string) string {
-	return strings.Replace(s, "fhannotations.", "fhannotations_svcauth.", -1)
+	return strings.Replace(s, "grpcutil.", "grpcutil_svcauth.", -1)
 }

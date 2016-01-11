@@ -4,8 +4,8 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/fd/featherhead/pkg/api/grpcutil"
 	"github.com/fd/featherhead/pkg/api/httpapi/router"
-	"github.com/fd/featherhead/proto"
 	"github.com/gogo/protobuf/gogoproto"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
@@ -115,8 +115,8 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 	// Server handler implementations.
 	for _, method := range service.Method {
-		v, _ := proto.GetExtension(method.Options, fhannotations.E_Http)
-		info, _ := v.(*fhannotations.HttpRule)
+		v, _ := proto.GetExtension(method.Options, grpcutil.E_Http)
+		info, _ := v.(*grpcutil.HttpRule)
 		if info == nil {
 			continue
 		}
@@ -133,19 +133,19 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 		)
 
 		switch x := info.GetPattern().(type) {
-		case *fhannotations.HttpRule_Get:
+		case *grpcutil.HttpRule_Get:
 			httpMethod = "GET"
 			pattern = x.Get
-		case *fhannotations.HttpRule_Post:
+		case *grpcutil.HttpRule_Post:
 			httpMethod = "POST"
 			pattern = x.Post
-		case *fhannotations.HttpRule_Put:
+		case *grpcutil.HttpRule_Put:
 			httpMethod = "PUT"
 			pattern = x.Put
-		case *fhannotations.HttpRule_Patch:
+		case *grpcutil.HttpRule_Patch:
 			httpMethod = "PATCH"
 			pattern = x.Patch
-		case *fhannotations.HttpRule_Delete:
+		case *grpcutil.HttpRule_Delete:
 			httpMethod = "DELETE"
 			pattern = x.Delete
 		default:
