@@ -1,6 +1,8 @@
 package svcauth
 
 import (
+	"fmt"
+	"os"
 	"strings"
 
 	"github.com/gogo/protobuf/proto"
@@ -107,8 +109,8 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 	g.P("var _ ", innerServerType, " = (*", serverType, ")(nil)")
 	g.P()
 
-	g.P("func New", servName, "ServerAuthGuard(inner ", innerServerType, ") ", innerServerType, " {")
-	g.P("return &", serverType, "{inner: inner}")
+	g.P("func New", servName, "ServerAuthGuard(inner ", innerServerType, ", auth fhannotations_svcauth.Authenticator) ", innerServerType, " {")
+	g.P("return &", serverType, "{inner: inner, authenticator: auth}")
 	g.P("}")
 	g.P()
 
@@ -184,6 +186,14 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P("return s.inner.", g.generateServerCall(servName, method))
 		g.P("}")
 		g.P()
+
+		fmt.Fprintf(os.Stderr, "%s\n  /%s.%s/%s:\n",
+			file.GetName(),
+			file.GetPackage(),
+			origServName, method.GetName())
+		fmt.Fprintf(os.Stderr, "    authn: %s\n    authz: %s\n",
+			authnInfo,
+			authzInfo)
 	}
 
 }
