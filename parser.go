@@ -8,6 +8,36 @@ import (
 	"github.com/juju/errors"
 )
 
+type Variable struct {
+	Name     string
+	MinCount int
+	MaxCount int
+	Pattern  string
+}
+
+func ExtractVariables(pattern string) ([]Variable, error) {
+	tokens, err := parse(pattern)
+	if err != nil {
+		return nil, err
+	}
+
+	vars := make([]Variable, 0, 4)
+	for _, token := range tokens {
+		if token.kind != tVARIABLE {
+			continue
+		}
+
+		vars = append(vars, Variable{
+			Name:     token.name,
+			MinCount: token.min,
+			MaxCount: token.max,
+			Pattern:  token.patternSrc,
+		})
+	}
+
+	return vars, nil
+}
+
 func parse(pattern string) ([]token, error) {
 	bytes := []byte(pattern)
 
