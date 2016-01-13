@@ -15,11 +15,10 @@ import (
 // Paths for packages used by code generated in this file,
 // relative to the import_prefix of the generator.Generator.
 const (
-	contextPkgPath       = "golang.org/x/net/context"
-	grpcPkgPath          = "google.golang.org/grpc"
-	grpcCodesPkgPath     = "google.golang.org/grpc/codes"
-	grpcMetadataPkgPath  = "google.golang.org/grpc/metadata"
-	grpcutilPkgPath = "github.com/fd/featherhead/pkg/api/grpcutil"
+	contextPkgPath   = "golang.org/x/net/context"
+	grpcPkgPath      = "google.golang.org/grpc"
+	grpcCodesPkgPath = "google.golang.org/grpc/codes"
+	grpcutilPkgPath  = "github.com/fd/featherhead/pkg/api/grpcutil"
 )
 
 func init() {
@@ -86,7 +85,6 @@ func (g *svcauth) GenerateImports(file *generator.FileDescriptor) {
 	g.gen.PrintImport("grpc_svcauth", grpcPkgPath)
 	g.gen.PrintImport("codes_svcauth", grpcCodesPkgPath)
 	g.gen.PrintImport("grpcutil_svcauth", grpcutilPkgPath)
-	g.gen.PrintImport("metadata_svcauth", grpcMetadataPkgPath)
 }
 
 func unexport(s string) string { return strings.ToLower(s[:1]) + s[1:] }
@@ -148,11 +146,14 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P("")
 
 		g.P("func (s *", serverType, ") ", g.generateServerSignature(servName, method), " {")
-
 		g.P("var (")
 		g.P("info grpcutil_svcauth.AuthInfo")
 		if method.GetServerStreaming() || method.GetClientStreaming() {
 			g.P("ctx = stream.Context()")
+
+			streamName := servName + generator.CamelCase(method.GetName()) + "Server"
+			streamPtrName := unexport(streamName)
+			g.P(`streamPtr = stream.(*`, streamPtrName, `)`)
 		}
 		g.P(")")
 
@@ -175,14 +176,12 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.P("")
 		}
 
-		g.P("md, ok := metadata_svcauth.FromContext(ctx)")
-		g.P(`if !ok || md == nil {`)
-		g.P(`panic("no metadata.MD in context.Context")`)
-		g.P(`}`)
-		g.P(`md["x-user-id"] = []string{info.UserID}`)
-		g.P(`md["x-client-id"] = []string{info.ClientID}`)
-		g.P(`md["x-subject-type"] = []string{info.SubjectType}`)
-		g.P(`md["x-subject-id"] = []string{info.SubjectID}`)
+		g.P(`ctx = grpcutil_svcauth.ContextWithAuthInfo(ctx, &info)`)
+
+		if method.GetServerStreaming() || method.GetClientStreaming() {
+			g.P(`streamPtr.ServerStream = grpcutil_svcauth.WrapServerStreamContext(streamPtr.ServerStream, ctx)`)
+		}
+
 		g.P("return s.inner.", g.generateServerCall(servName, method))
 		g.P("}")
 		g.P()
