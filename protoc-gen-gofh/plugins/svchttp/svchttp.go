@@ -20,6 +20,7 @@ const (
 	grpcCodesPkgPath = "google.golang.org/grpc/codes"
 	httpPkgPath      = "net/http"
 	routerPkgPath    = "github.com/fd/featherhead/pkg/api/httpapi/router"
+	grpcUtilPkgPath  = "github.com/fd/featherhead/pkg/api/grpcutil"
 	errorsPkgPath    = "github.com/juju/errors"
 	jsonPkgPath      = "encoding/json"
 )
@@ -31,7 +32,9 @@ func init() {
 // grpc is an implementation of the Go protocol buffer compiler's
 // plugin architecture.  It generates bindings for gRPC support.
 type svchttp struct {
-	gen *generator.Generator
+	gen     *generator.Generator
+	imports generator.PluginImports
+	httpPkg generator.Single
 }
 
 // Name returns the name of this plugin, "grpc".
@@ -47,6 +50,11 @@ var reservedClientName = map[string]bool{
 // Init initializes the plugin.
 func (g *svchttp) Init(gen *generator.Generator) {
 	g.gen = gen
+
+	imp := generator.NewPluginImports(gen)
+	g.imports = imp
+
+	g.httpPkg = imp.NewImport(httpPkgPath)
 }
 
 // Given a type name defined in a .proto, return its object.
@@ -77,6 +85,7 @@ func (g *svchttp) Generate(file *generator.FileDescriptor) {
 	g.P(`var _ *router_svchttp.Router`)
 	g.P(`var _ = errors_svchttp.Errorf`)
 	g.P(`var _ = json_svchttp.Marshal`)
+	g.P(`var _ = grpcutil_svchttp.RenderMessageJSON`)
 	g.P()
 	for i, service := range file.FileDescriptorProto.Service {
 		g.generateService(file, service, i)
@@ -95,12 +104,26 @@ func (g *svchttp) GenerateImports(file *generator.FileDescriptor) {
 	g.gen.PrintImport("router_svchttp", routerPkgPath)
 	g.gen.PrintImport("errors_svchttp", errorsPkgPath)
 	g.gen.PrintImport("json_svchttp", jsonPkgPath)
+	g.gen.PrintImport("grpcutil_svchttp", grpcUtilPkgPath)
+
+	g.imports.GenerateImports(file)
 }
 
 func unexport(s string) string { return strings.ToLower(s[:1]) + s[1:] }
 
 // generateService generates all the code for the named service.
 func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto, index int) {
+	count := 0
+	for _, method := range service.Method {
+		v, _ := proto.GetExtension(method.Options, grpcutil.E_Http)
+		info, _ := v.(*grpcutil.HttpRule)
+		if info != nil {
+			count++
+		}
+	}
+	if count == 0 {
+		return
+	}
 
 	origServName := service.GetName()
 	servName := generator.CamelCase(origServName)
@@ -110,6 +133,47 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 	g.P("type ", handlerName, " struct {")
 	g.P("ss ", innerServerType)
+	g.P("}")
+	g.P()
+
+	// Register handler
+	g.P(`func Register`, servName, `Gateway(router *router_svchttp.Router, ss `, innerServerType, `) {`)
+	g.P(`h := &`, handlerName, `{ss: ss}`)
+	for _, method := range service.Method {
+		v, _ := proto.GetExtension(method.Options, grpcutil.E_Http)
+		info, _ := v.(*grpcutil.HttpRule)
+		if info == nil {
+			continue
+		}
+
+		var (
+			pattern    string
+			httpMethod string
+		)
+
+		switch x := info.GetPattern().(type) {
+		case *grpcutil.HttpRule_Get:
+			httpMethod = "GET"
+			pattern = x.Get
+		case *grpcutil.HttpRule_Post:
+			httpMethod = "POST"
+			pattern = x.Post
+		case *grpcutil.HttpRule_Put:
+			httpMethod = "PUT"
+			pattern = x.Put
+		case *grpcutil.HttpRule_Patch:
+			httpMethod = "PATCH"
+			pattern = x.Patch
+		case *grpcutil.HttpRule_Delete:
+			httpMethod = "DELETE"
+			pattern = x.Delete
+		default:
+			g.gen.Fail("xyz.featherhead.http requires a method: pattern")
+		}
+
+		handlerMethod := g.generateServerCallName(servName, method)
+		g.P(`router.Addf(`, strconv.Quote(httpMethod), `,`, strconv.Quote(pattern), `, h. `, handlerMethod, `)`)
+	}
 	g.P("}")
 	g.P()
 
@@ -174,6 +238,7 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 		g.P(`var (`)
 		g.P(`input `, g.typeName(inputTypeName))
+		g.P(`output *`, g.typeName(outputTypeName))
 		if len(vars) > 0 {
 			g.P(`params = router_svchttp.P(ctx)`)
 		}
@@ -233,17 +298,18 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 		g.P(`{ // call`)
 		if !method.GetServerStreaming() && !method.GetClientStreaming() {
-			g.P(`output, err := h.ss.`, g.generateServerCall(servName, method))
+			g.P(`o, err := h.ss.`, g.generateServerCall(servName, method))
 		} else {
 			g.P(`err := h.ss.`, g.generateServerCall(servName, method))
 		}
 		g.P(`if err != nil {`)
 		g.P(`return errors_svchttp.Trace(err)`)
 		g.P(`}`)
-		g.P(`_ = output`)
+		g.P(`output = o`)
 		g.P(`}`)
 		g.P()
 
+		g.P(`grpcutil_svchttp.RenderMessageJSON(rw, 200, output)`)
 		g.P("return nil")
 		g.P("}")
 		g.P()
