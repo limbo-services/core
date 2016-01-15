@@ -1,6 +1,9 @@
 package svchttp
 
 import (
+	"encoding/json"
+	"fmt"
+	"path"
 	"strconv"
 	"strings"
 
@@ -10,19 +13,20 @@ import (
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
+	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
 )
 
 // Paths for packages used by code generated in this file,
 // relative to the import_prefix of the generator.Generator.
 const (
-	contextPkgPath   = "golang.org/x/net/context"
-	grpcPkgPath      = "google.golang.org/grpc"
-	grpcCodesPkgPath = "google.golang.org/grpc/codes"
-	httpPkgPath      = "net/http"
-	routerPkgPath    = "github.com/fd/featherhead/pkg/api/httpapi/router"
-	grpcUtilPkgPath  = "github.com/fd/featherhead/pkg/api/grpcutil"
-	errorsPkgPath    = "github.com/juju/errors"
-	jsonPkgPath      = "encoding/json"
+	contextPkgPath    = "golang.org/x/net/context"
+	grpcPkgPath       = "google.golang.org/grpc"
+	grpcCodesPkgPath  = "google.golang.org/grpc/codes"
+	httpPkgPath       = "net/http"
+	routerPkgPath     = "github.com/fd/featherhead/pkg/api/httpapi/router"
+	grpcUtilPkgPath   = "github.com/fd/featherhead/pkg/api/grpcutil"
+	jujuErrorsPkgPath = "github.com/juju/errors"
+	jsonPkgPath       = "encoding/json"
 )
 
 func init() {
@@ -32,9 +36,17 @@ func init() {
 // grpc is an implementation of the Go protocol buffer compiler's
 // plugin architecture.  It generates bindings for gRPC support.
 type svchttp struct {
-	gen     *generator.Generator
-	imports generator.PluginImports
-	httpPkg generator.Single
+	gen *generator.Generator
+
+	imports       generator.PluginImports
+	httpPkg       generator.Single
+	grpcPkg       generator.Single
+	contextPkg    generator.Single
+	grpcCodesPkg  generator.Single
+	routerPkg     generator.Single
+	jujuErrorsPkg generator.Single
+	jsonPkg       generator.Single
+	grpcUtilPkg   generator.Single
 }
 
 // Name returns the name of this plugin, "grpc".
@@ -50,11 +62,6 @@ var reservedClientName = map[string]bool{
 // Init initializes the plugin.
 func (g *svchttp) Init(gen *generator.Generator) {
 	g.gen = gen
-
-	imp := generator.NewPluginImports(gen)
-	g.imports = imp
-
-	g.httpPkg = imp.NewImport(httpPkgPath)
 }
 
 // Given a type name defined in a .proto, return its object.
@@ -77,16 +84,18 @@ func (g *svchttp) Generate(file *generator.FileDescriptor) {
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}
-	g.P("// Reference imports to suppress errors if they are not otherwise used.")
-	g.P("var _ context_svchttp.Context")
-	g.P("var _ grpc_svchttp.Codec")
-	g.P("var _ codes_svchttp.Code")
-	g.P(`var _ *http_svchttp.Request`)
-	g.P(`var _ *router_svchttp.Router`)
-	g.P(`var _ = errors_svchttp.Errorf`)
-	g.P(`var _ = json_svchttp.Marshal`)
-	g.P(`var _ = grpcutil_svchttp.RenderMessageJSON`)
-	g.P()
+
+	imp := generator.NewPluginImports(g.gen)
+	g.imports = imp
+	g.contextPkg = imp.NewImport(contextPkgPath)
+	g.grpcCodesPkg = imp.NewImport(grpcCodesPkgPath)
+	g.grpcPkg = imp.NewImport(grpcPkgPath)
+	g.grpcUtilPkg = imp.NewImport(grpcUtilPkgPath)
+	g.httpPkg = imp.NewImport(httpPkgPath)
+	g.jsonPkg = imp.NewImport(jsonPkgPath)
+	g.jujuErrorsPkg = imp.NewImport(jujuErrorsPkgPath)
+	g.routerPkg = imp.NewImport(routerPkgPath)
+
 	for i, service := range file.FileDescriptorProto.Service {
 		g.generateService(file, service, i)
 	}
@@ -97,33 +106,70 @@ func (g *svchttp) GenerateImports(file *generator.FileDescriptor) {
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}
-	g.gen.PrintImport("context_svchttp", contextPkgPath)
-	g.gen.PrintImport("grpc_svchttp", grpcPkgPath)
-	g.gen.PrintImport("codes_svchttp", grpcCodesPkgPath)
-	g.gen.PrintImport("http_svchttp", httpPkgPath)
-	g.gen.PrintImport("router_svchttp", routerPkgPath)
-	g.gen.PrintImport("errors_svchttp", errorsPkgPath)
-	g.gen.PrintImport("json_svchttp", jsonPkgPath)
-	g.gen.PrintImport("grpcutil_svchttp", grpcUtilPkgPath)
 
 	g.imports.GenerateImports(file)
 }
 
 func unexport(s string) string { return strings.ToLower(s[:1]) + s[1:] }
 
-// generateService generates all the code for the named service.
-func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto, index int) {
-	count := 0
-	for _, method := range service.Method {
+type API struct {
+	method        *pb.MethodDescriptorProto
+	desc          *grpcutil.HttpRule
+	descIndexPath string
+}
+
+func filterAPIs(methods []*pb.MethodDescriptorProto, svcIndex int) []*API {
+	var apis = make([]*API, 0, len(methods))
+	path := fmt.Sprintf("6,%d", svcIndex) // 6 means service.
+
+	for i, method := range methods {
 		v, _ := proto.GetExtension(method.Options, grpcutil.E_Http)
 		info, _ := v.(*grpcutil.HttpRule)
 		if info != nil {
-			count++
+			apis = append(apis, &API{
+				method:        method,
+				desc:          info,
+				descIndexPath: fmt.Sprintf("%s,2,%d", path, i), // 2 means method in a service.
+			})
 		}
 	}
-	if count == 0 {
+
+	return apis
+}
+
+func (api *API) GetMethodAndPattern() (method, pattern string, ok bool) {
+
+	switch x := api.desc.GetPattern().(type) {
+	case *grpcutil.HttpRule_Get:
+		method = "GET"
+		pattern = x.Get
+	case *grpcutil.HttpRule_Post:
+		method = "POST"
+		pattern = x.Post
+	case *grpcutil.HttpRule_Put:
+		method = "PUT"
+		pattern = x.Put
+	case *grpcutil.HttpRule_Patch:
+		method = "PATCH"
+		pattern = x.Patch
+	case *grpcutil.HttpRule_Delete:
+		method = "DELETE"
+		pattern = x.Delete
+	default:
+		return "", "", false
+	}
+
+	return method, pattern, true
+}
+
+// generateService generates all the code for the named service.
+func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto, index int) {
+	apis := filterAPIs(service.Method, index)
+	if len(apis) == 0 {
 		return
 	}
+
+	g.generateSwaggerSpec(file, service, apis)
 
 	origServName := service.GetName()
 	servName := generator.CamelCase(origServName)
@@ -137,37 +183,16 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 	g.P()
 
 	// Register handler
-	g.P(`func Register`, servName, `Gateway(router *router_svchttp.Router, ss `, innerServerType, `) {`)
+	var (
+		routerRouter = g.routerPkg.Use() + ".Router"
+	)
+	g.P(`func Register`, servName, `Gateway(router *`, routerRouter, `, ss `, innerServerType, `) {`)
 	g.P(`h := &`, handlerName, `{ss: ss}`)
-	for _, method := range service.Method {
-		v, _ := proto.GetExtension(method.Options, grpcutil.E_Http)
-		info, _ := v.(*grpcutil.HttpRule)
-		if info == nil {
-			continue
-		}
+	for _, api := range apis {
+		_, method := api.desc, api.method
 
-		var (
-			pattern    string
-			httpMethod string
-		)
-
-		switch x := info.GetPattern().(type) {
-		case *grpcutil.HttpRule_Get:
-			httpMethod = "GET"
-			pattern = x.Get
-		case *grpcutil.HttpRule_Post:
-			httpMethod = "POST"
-			pattern = x.Post
-		case *grpcutil.HttpRule_Put:
-			httpMethod = "PUT"
-			pattern = x.Put
-		case *grpcutil.HttpRule_Patch:
-			httpMethod = "PATCH"
-			pattern = x.Patch
-		case *grpcutil.HttpRule_Delete:
-			httpMethod = "DELETE"
-			pattern = x.Delete
-		default:
+		httpMethod, pattern, ok := api.GetMethodAndPattern()
+		if !ok {
 			g.gen.Fail("xyz.featherhead.http requires a method: pattern")
 		}
 
@@ -178,12 +203,8 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 	g.P()
 
 	// Server handler implementations.
-	for _, method := range service.Method {
-		v, _ := proto.GetExtension(method.Options, grpcutil.E_Http)
-		info, _ := v.(*grpcutil.HttpRule)
-		if info == nil {
-			continue
-		}
+	for _, api := range apis {
+		info, method := api.desc, api.method
 
 		inputTypeName := method.GetInputType()
 		inputType, _ := g.gen.ObjectNamed(inputTypeName).(*generator.Descriptor)
@@ -191,28 +212,8 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 		outputTypeName := method.GetOutputType()
 		outputType, _ := g.gen.ObjectNamed(outputTypeName).(*generator.Descriptor)
 
-		var (
-			pattern    string
-			httpMethod string
-		)
-
-		switch x := info.GetPattern().(type) {
-		case *grpcutil.HttpRule_Get:
-			httpMethod = "GET"
-			pattern = x.Get
-		case *grpcutil.HttpRule_Post:
-			httpMethod = "POST"
-			pattern = x.Post
-		case *grpcutil.HttpRule_Put:
-			httpMethod = "PUT"
-			pattern = x.Put
-		case *grpcutil.HttpRule_Patch:
-			httpMethod = "PATCH"
-			pattern = x.Patch
-		case *grpcutil.HttpRule_Delete:
-			httpMethod = "DELETE"
-			pattern = x.Delete
-		default:
+		httpMethod, pattern, ok := api.GetMethodAndPattern()
+		if !ok {
 			g.gen.Fail("xyz.featherhead.http requires a method: pattern")
 		}
 
@@ -222,34 +223,42 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 			return
 		}
 
-		//g.gen.GetFieldName(message *generator.Descriptor, field *descriptor.FieldDescriptorProto)
+		var (
+			httpResponseWriter = g.httpPkg.Use() + ".ResponseWriter"
+			httpRequest        = g.httpPkg.Use() + ".Request"
+			contextContext     = g.contextPkg.Use() + ".Context"
+		)
 
 		handlerMethod := g.generateServerCallName(servName, method)
-		g.P("func (h* ", handlerName, " )", handlerMethod, "(ctx context_svchttp.Context, rw http_svchttp.ResponseWriter, req *http_svchttp.Request) error {")
+		jujuErrors := g.jujuErrorsPkg.Use()
+		g.P("func (h* ", handlerName, " )", handlerMethod, "(ctx ", contextContext, ", rw ", httpResponseWriter, ", req *", httpRequest, ") error {")
 		g.P("// info:      ", info.String())
 		g.P("//   method:  ", httpMethod)
 		g.P("//   pattern: ", pattern)
 		g.P("//   input:   ", inputType.String())
 		g.P("//   output:  ", outputType.String())
 		g.P("if req.Method != ", strconv.Quote(httpMethod), "{")
-		g.P(`  return errors_svchttp.MethodNotAllowedf("expected `, httpMethod, ` request")`)
+		g.P(`  return `, jujuErrors, `.MethodNotAllowedf("expected `, httpMethod, ` request")`)
 		g.P("}")
 		g.P()
 
 		g.P(`var (`)
 		g.P(`input `, g.typeName(inputTypeName))
-		g.P(`output *`, g.typeName(outputTypeName))
 		if len(vars) > 0 {
-			g.P(`params = router_svchttp.P(ctx)`)
+			routerP := g.routerPkg.Use() + ".P"
+			g.P(`params = `, routerP, `(ctx)`)
 		}
 		g.P(`)`)
 		g.P()
 
+		g.P(`ctx = `, g.grpcUtilPkg.Use(), `.AnnotateContext(ctx, req)`)
+		g.P()
+
 		if httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH" {
 			g.P("{ // from body")
-			g.P("err := json_svchttp.NewDecoder(req.Body).Decode(&input)")
+			g.P("err := ", g.jsonPkg.Use(), ".NewDecoder(req.Body).Decode(&input)")
 			g.P(`if err != nil {`)
-			g.P(`return errors_svchttp.Trace(err)`)
+			g.P(`return `, g.jujuErrorsPkg.Use(), `.Trace(err)`)
 			g.P(`}`)
 			g.P(`}`)
 			g.P()
@@ -298,18 +307,29 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 		g.P(`{ // call`)
 		if !method.GetServerStreaming() && !method.GetClientStreaming() {
-			g.P(`o, err := h.ss.`, g.generateServerCall(servName, method))
+			g.P(`output, err := h.ss.`, g.generateServerCall(servName, method))
+			g.P(`if err != nil {`)
+			g.P(`return `, g.jujuErrorsPkg.Use(), `.Trace(err)`)
+			g.P(`}`)
+			g.P(g.grpcUtilPkg.Use(), `.RenderMessageJSON(rw, 200, output)`)
+			g.P("return nil")
 		} else {
-			g.P(`err := h.ss.`, g.generateServerCall(servName, method))
+			if info.Paged {
+				g.P(`marker := req.URL.Query().Get("after")`)
+				g.P(`ss, err := `, g.grpcUtilPkg.Use(), `.NewPagedServerStream(ctx, rw, marker, `, int(info.PageSize), `)`)
+				g.P(`if err != nil {`)
+				g.P(`return `, g.jujuErrorsPkg.Use(), `.Trace(err)`)
+				g.P(`}`)
+				g.P(`defer ss.Close()`)
+				g.P(`stream := &`, unexport(servName), method.GetName(), `Server{ss}`)
+				g.P(`err = h.ss.`, g.generateServerCall(servName, method))
+			} else {
+				g.gen.Fail("unsupported stream response")
+			}
 		}
-		g.P(`if err != nil {`)
-		g.P(`return errors_svchttp.Trace(err)`)
-		g.P(`}`)
-		g.P(`output = o`)
 		g.P(`}`)
 		g.P()
 
-		g.P(`grpcutil_svchttp.RenderMessageJSON(rw, 200, output)`)
 		g.P("return nil")
 		g.P("}")
 		g.P()
@@ -349,4 +369,104 @@ func (g *svchttp) generateServerCall(servName string, method *pb.MethodDescripto
 	}
 
 	return methName + "(" + strings.Join(reqArgs, ", ") + ") "
+}
+
+func (g *svchttp) generateSwaggerSpec(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto, apis []*API) {
+
+	type Info struct {
+		Title          string `json:"title"`
+		Description    string `json:"description,omitempty"`
+		TermsOfService string `json:"termsOfService,omitempty"`
+		Version        string `json:"version"`
+	}
+
+	type ParameterObject struct {
+	}
+
+	type ResponseObject struct {
+		Description string `json:"description"`
+		// schema      string
+		// headers
+		// examples
+	}
+
+	type OperationObject struct {
+		Summary     string                    `json:"summary,omitempty"`
+		Description string                    `json:"description,omitempty"`
+		Parameters  []ParameterObject         `json:"parameters,omitempty"`
+		Responses   map[string]ResponseObject `json:"responses"`
+	}
+
+	type Swagger struct {
+		Swagger string `json:"swagger"`
+		Info    Info   `json:"info"`
+		// host
+		// basePath
+		Schemes  []string `json:"schemes"`  // ["https", "wss"]
+		Consumes []string `json:"consumes"` // ["application/json; charset=utf-8"]
+		Produces []string `json:"produces"` // ["application/json; charset=utf-8"]
+
+		// swagger.Paths["<path>"]
+		Paths map[string]map[string]*OperationObject `json:"paths"`
+	}
+
+	spec := Swagger{
+		Swagger: "2.0",
+		Info: Info{
+			Title:   "Featherhead - " + service.GetName(),
+			Version: "1",
+		},
+
+		Schemes:  []string{"https", "wss"},
+		Consumes: []string{"application/json; charset=utf-8"},
+		Produces: []string{"application/json; charset=utf-8"},
+
+		Paths: map[string]map[string]*OperationObject{},
+	}
+
+	for _, api := range apis {
+		method, pattern, ok := api.GetMethodAndPattern()
+		if !ok {
+			continue
+		}
+
+		pathItem := spec.Paths[pattern]
+		if pathItem == nil {
+			pathItem = make(map[string]*OperationObject)
+			spec.Paths[pattern] = pathItem
+		}
+
+		operation := pathItem[strings.ToLower(method)]
+		if operation == nil {
+			operation = &OperationObject{}
+			pathItem[strings.ToLower(method)] = operation
+		}
+
+		if operation.Responses == nil {
+			operation.Responses = make(map[string]ResponseObject)
+		}
+
+		operation.Description = strings.TrimSpace(g.gen.Comments(api.descIndexPath))
+		operation.Responses["200"] = ResponseObject{
+			Description: "Response on success",
+		}
+	}
+
+	data, err := json.Marshal(&spec)
+	if err != nil {
+		g.gen.Error(err)
+	}
+
+	g.gen.Response.File = append(g.gen.Response.File, &plugin.CodeGeneratorResponse_File{
+		Name:    proto.String(swaggerSpecFileName(*file.Name)),
+		Content: proto.String(string(data)),
+	})
+}
+
+func swaggerSpecFileName(name string) string {
+	ext := path.Ext(name)
+	if ext == ".proto" || ext == ".protodevel" {
+		name = name[0 : len(name)-len(ext)]
+	}
+	return name + ".swagger.json"
 }
