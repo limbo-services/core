@@ -10,9 +10,9 @@ import (
 // Paths for packages used by code generated in this file,
 // relative to the import_prefix of the generator.Generator.
 const (
-	contextPkgPath   = "golang.org/x/net/context"
-	grpcPkgPath      = "google.golang.org/grpc"
-	grpcCodesPkgPath = "google.golang.org/grpc/codes"
+	contextPkgPath = "golang.org/x/net/context"
+	grpcPkgPath    = "google.golang.org/grpc"
+	runtimePkgPath = "github.com/fd/featherhead/tools/runtime/svcpanic"
 )
 
 func init() {
@@ -23,6 +23,11 @@ func init() {
 // plugin architecture.  It generates bindings for gRPC support.
 type svcpanic struct {
 	gen *generator.Generator
+
+	imports    generator.PluginImports
+	contextPkg generator.Single
+	grpcPkg    generator.Single
+	runtimePkg generator.Single
 }
 
 // Name returns the name of this plugin, "grpc".
@@ -60,11 +65,13 @@ func (g *svcpanic) Generate(file *generator.FileDescriptor) {
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}
-	g.P("// Reference imports to suppress errors if they are not otherwise used.")
-	g.P("var _ context_svcpanic.Context")
-	g.P("var _ grpc_svcpanic.Codec")
-	g.P("var _ codes_svcpanic.Code")
-	g.P()
+
+	imp := generator.NewPluginImports(g.gen)
+	g.imports = imp
+	g.contextPkg = imp.NewImport(contextPkgPath)
+	g.grpcPkg = imp.NewImport(grpcPkgPath)
+	g.runtimePkg = imp.NewImport(runtimePkgPath)
+
 	for i, service := range file.FileDescriptorProto.Service {
 		g.generateService(file, service, i)
 	}
@@ -75,9 +82,8 @@ func (g *svcpanic) GenerateImports(file *generator.FileDescriptor) {
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}
-	g.gen.PrintImport("context_svcpanic", contextPkgPath)
-	g.gen.PrintImport("grpc_svcpanic", grpcPkgPath)
-	g.gen.PrintImport("codes_svcpanic", grpcCodesPkgPath)
+
+	g.imports.GenerateImports(file)
 }
 
 func unexport(s string) string { return strings.ToLower(s[:1]) + s[1:] }
@@ -92,34 +98,22 @@ func (g *svcpanic) generateService(file *generator.FileDescriptor, service *pb.S
 	innerServerType := servName + "Server"
 	serverType := unexport(servName) + "ServerPanicGuard"
 	g.P("type ", serverType, " struct {")
-	g.P("recover func(v interface{}) error")
-	g.P(innerServerType)
+	g.P(`handler `, g.runtimePkg.Use(), `.ErrorHandler`)
+	g.P(`inner `, innerServerType)
 	g.P("}")
 	g.P()
 
-	g.P("var _ ", innerServerType, " = (*", serverType, ")(nil)")
-	g.P()
-
-	g.P("func New", servName, "ServerPanicGuard(inner ", innerServerType, ", recover func(v interface{}) error) ", innerServerType, " {")
-	g.P("return &", serverType, "{", innerServerType, ": inner, recover: recover}")
+	g.P("func New", servName, "ServerPanicGuard(inner ", innerServerType, `, handler `, g.runtimePkg.Use(), `.ErrorHandler) `, innerServerType, " {")
+	g.P("return &", serverType, "{ inner : inner, handler: handler}")
 	g.P("}")
 	g.P()
 
 	// Server handler implementations.
 	for _, method := range service.Method {
-		g.P("func (s *", serverType, ") ", g.generateServerSignature(servName, method), " {")
-		g.P("defer func(errPtr *error) {")
-		g.P("r := recover()")
-		g.P("if r != nil {")
-		g.P("err := s.recover(r)")
-		g.P("if err == nil {")
-		g.P("err = grpc_svcpanic.Errorf(codes_svcpanic.Unknown, \"internal server error\")")
-		g.P("}")
-		g.P("*errPtr = err")
-		g.P("}")
-		g.P("}(&err)")
-		g.P("return s.", innerServerType, ".", g.generateServerCall(servName, method))
-		g.P("}")
+		g.P(`func (s *`, serverType, `) `, g.generateServerSignature(servName, method), ` {`)
+		g.P(`defer `, g.runtimePkg.Use(), `.RecoverPanic(&err, s.handler)`)
+		g.P(`return s.inner.`, g.generateServerCall(servName, method))
+		g.P(`}`)
 		g.P()
 	}
 
@@ -136,7 +130,7 @@ func (g *svcpanic) generateServerSignature(servName string, method *pb.MethodDes
 	var reqArgs []string
 	ret := "(err error)"
 	if !method.GetServerStreaming() && !method.GetClientStreaming() {
-		reqArgs = append(reqArgs, "ctx context_svcpanic.Context")
+		reqArgs = append(reqArgs, `ctx `+g.contextPkg.Use()+`.Context`)
 		ret = "(out *" + g.typeName(method.GetOutputType()) + ", err error)"
 	}
 	if !method.GetClientStreaming() {

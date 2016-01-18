@@ -1,13 +1,15 @@
 package svcauth
 
 import (
+	"encoding/json"
 	"fmt"
-	"os"
+	"path"
 	"strings"
 
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
+	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
 
 	grpcutil "github.com/fd/featherhead/pkg/api/grpcutil"
 )
@@ -91,6 +93,10 @@ func unexport(s string) string { return strings.ToLower(s[:1]) + s[1:] }
 
 // generateService generates all the code for the named service.
 func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto, index int) {
+	methods := g.findMethods(file, service)
+	if len(methods) == 0 {
+		return
+	}
 
 	origServName := service.GetName()
 	servName := generator.CamelCase(origServName)
@@ -113,29 +119,8 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 	g.P()
 
 	// Server handler implementations.
-	for _, method := range service.Method {
-		var (
-			authnInfo *grpcutil.AuthnRule
-			authzInfo *grpcutil.AuthzRule
-		)
-
-		{ // authn
-			v, _ := proto.GetExtension(method.Options, grpcutil.E_Authn)
-			authnInfo, _ = v.(*grpcutil.AuthnRule)
-			if authnInfo == nil {
-				authnInfo = &grpcutil.AuthnRule{}
-				authnInfo.Gateway = grpcutil.AuthnRule_DENY
-			}
-			authnInfo.SetDefaults()
-		}
-
-		{ // authz
-			v, _ := proto.GetExtension(method.Options, grpcutil.E_Authz)
-			authzInfo, _ = v.(*grpcutil.AuthzRule)
-			if authzInfo != nil {
-				authzInfo.SetDefaults()
-			}
-		}
+	for _, authMethod := range methods {
+		method, authnInfo, authzInfo := authMethod.method, authMethod.Authn, authMethod.Authz
 
 		authnRuleName := g.generateAuthnRuleName(servName, method)
 		authzRuleName := g.generateAuthzRuleName(servName, method)
@@ -185,14 +170,18 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P("return s.inner.", g.generateServerCall(servName, method))
 		g.P("}")
 		g.P()
+	}
 
-		fmt.Fprintf(os.Stderr, "%s\n  /%s.%s/%s:\n",
-			file.GetName(),
-			file.GetPackage(),
-			origServName, method.GetName())
-		fmt.Fprintf(os.Stderr, "    authn: %s\n    authz: %s\n",
-			authnInfo,
-			authzInfo)
+	{
+		data, err := json.Marshal(methods)
+		if err != nil {
+			g.gen.Error(err)
+		}
+
+		g.gen.Response.File = append(g.gen.Response.File, &plugin.CodeGeneratorResponse_File{
+			Name:    proto.String(authSpecFileName(*file.Name)),
+			Content: proto.String(string(data)),
+		})
 	}
 
 }
@@ -265,4 +254,61 @@ func (g *svcauth) generateAuthzRuleName(servName string, method *pb.MethodDescri
 
 func replaceFhAnnotationNames(s string) string {
 	return strings.Replace(s, "grpcutil.", "grpcutil_svcauth.", -1)
+}
+
+type authMethod struct {
+	file    *generator.FileDescriptor
+	service *pb.ServiceDescriptorProto
+	method  *pb.MethodDescriptorProto
+	Name    string              `json:"method"`
+	Authn   *grpcutil.AuthnRule `json:"authn"`
+	Authz   *grpcutil.AuthzRule `json:"authz" `
+}
+
+func (g *svcauth) findMethods(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto) []*authMethod {
+	methods := make([]*authMethod, 0, len(service.Method))
+
+	for _, method := range service.Method {
+		var (
+			authnInfo *grpcutil.AuthnRule
+			authzInfo *grpcutil.AuthzRule
+		)
+
+		{ // authn
+			v, _ := proto.GetExtension(method.Options, grpcutil.E_Authn)
+			authnInfo, _ = v.(*grpcutil.AuthnRule)
+			if authnInfo == nil {
+				authnInfo = &grpcutil.AuthnRule{}
+				authnInfo.Gateway = grpcutil.AuthnRule_DENY
+			}
+			authnInfo.SetDefaults()
+		}
+
+		{ // authz
+			v, _ := proto.GetExtension(method.Options, grpcutil.E_Authz)
+			authzInfo, _ = v.(*grpcutil.AuthzRule)
+			if authzInfo != nil {
+				authzInfo.SetDefaults()
+			}
+		}
+
+		methods = append(methods, &authMethod{
+			file:    file,
+			service: service,
+			method:  method,
+			Authn:   authnInfo,
+			Authz:   authzInfo,
+			Name:    fmt.Sprintf("/%s.%s/%s", file.GetPackage(), service.GetName(), method.GetName()),
+		})
+	}
+
+	return methods
+}
+
+func authSpecFileName(name string) string {
+	ext := path.Ext(name)
+	if ext == ".proto" || ext == ".protodevel" {
+		name = name[0 : len(name)-len(ext)]
+	}
+	return name + ".auth.json"
 }

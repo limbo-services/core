@@ -7,8 +7,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fd/featherhead/pkg/api/grpcutil"
 	"github.com/fd/featherhead/pkg/api/httpapi/router"
+	runtime "github.com/fd/featherhead/tools/runtime/svchttp"
 	"github.com/gogo/protobuf/gogoproto"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
@@ -24,7 +24,7 @@ const (
 	grpcCodesPkgPath  = "google.golang.org/grpc/codes"
 	httpPkgPath       = "net/http"
 	routerPkgPath     = "github.com/fd/featherhead/pkg/api/httpapi/router"
-	grpcUtilPkgPath   = "github.com/fd/featherhead/pkg/api/grpcutil"
+	runtimePkgPath    = "github.com/fd/featherhead/tools/runtime/svchttp"
 	jujuErrorsPkgPath = "github.com/juju/errors"
 	jsonPkgPath       = "encoding/json"
 )
@@ -46,7 +46,7 @@ type svchttp struct {
 	routerPkg     generator.Single
 	jujuErrorsPkg generator.Single
 	jsonPkg       generator.Single
-	grpcUtilPkg   generator.Single
+	runtimePkg    generator.Single
 }
 
 // Name returns the name of this plugin, "grpc".
@@ -90,7 +90,7 @@ func (g *svchttp) Generate(file *generator.FileDescriptor) {
 	g.contextPkg = imp.NewImport(contextPkgPath)
 	g.grpcCodesPkg = imp.NewImport(grpcCodesPkgPath)
 	g.grpcPkg = imp.NewImport(grpcPkgPath)
-	g.grpcUtilPkg = imp.NewImport(grpcUtilPkgPath)
+	g.runtimePkg = imp.NewImport(runtimePkgPath)
 	g.httpPkg = imp.NewImport(httpPkgPath)
 	g.jsonPkg = imp.NewImport(jsonPkgPath)
 	g.jujuErrorsPkg = imp.NewImport(jujuErrorsPkgPath)
@@ -114,7 +114,7 @@ func unexport(s string) string { return strings.ToLower(s[:1]) + s[1:] }
 
 type API struct {
 	method        *pb.MethodDescriptorProto
-	desc          *grpcutil.HttpRule
+	desc          *runtime.HttpRule
 	descIndexPath string
 }
 
@@ -123,8 +123,8 @@ func filterAPIs(methods []*pb.MethodDescriptorProto, svcIndex int) []*API {
 	path := fmt.Sprintf("6,%d", svcIndex) // 6 means service.
 
 	for i, method := range methods {
-		v, _ := proto.GetExtension(method.Options, grpcutil.E_Http)
-		info, _ := v.(*grpcutil.HttpRule)
+		v, _ := proto.GetExtension(method.Options, runtime.E_Http)
+		info, _ := v.(*runtime.HttpRule)
 		if info != nil {
 			apis = append(apis, &API{
 				method:        method,
@@ -140,19 +140,19 @@ func filterAPIs(methods []*pb.MethodDescriptorProto, svcIndex int) []*API {
 func (api *API) GetMethodAndPattern() (method, pattern string, ok bool) {
 
 	switch x := api.desc.GetPattern().(type) {
-	case *grpcutil.HttpRule_Get:
+	case *runtime.HttpRule_Get:
 		method = "GET"
 		pattern = x.Get
-	case *grpcutil.HttpRule_Post:
+	case *runtime.HttpRule_Post:
 		method = "POST"
 		pattern = x.Post
-	case *grpcutil.HttpRule_Put:
+	case *runtime.HttpRule_Put:
 		method = "PUT"
 		pattern = x.Put
-	case *grpcutil.HttpRule_Patch:
+	case *runtime.HttpRule_Patch:
 		method = "PATCH"
 		pattern = x.Patch
-	case *grpcutil.HttpRule_Delete:
+	case *runtime.HttpRule_Delete:
 		method = "DELETE"
 		pattern = x.Delete
 	default:
@@ -213,8 +213,22 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 		outputType, _ := g.gen.ObjectNamed(outputTypeName).(*generator.Descriptor)
 
 		httpMethod, pattern, ok := api.GetMethodAndPattern()
+		queryParams := map[string]string{}
 		if !ok {
 			g.gen.Fail("xyz.featherhead.http requires a method: pattern")
+		}
+
+		if idx := strings.IndexRune(pattern, '?'); idx >= 0 {
+			queryString := pattern[idx+1:]
+			pattern = pattern[:idx]
+
+			for _, pair := range strings.SplitN(queryString, "&", -1) {
+				idx := strings.Index(pair, "={")
+				if pair[len(pair)-1] != '}' || idx < 0 {
+					g.gen.Fail("invalid query paramter")
+				}
+				queryParams[pair[:idx]] = pair[idx+2 : len(pair)-1]
+			}
 		}
 
 		vars, err := router.ExtractVariables(pattern)
@@ -251,7 +265,7 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P(`)`)
 		g.P()
 
-		g.P(`ctx = `, g.grpcUtilPkg.Use(), `.AnnotateContext(ctx, req)`)
+		g.P(`ctx = `, g.runtimePkg.Use(), `.AnnotateContext(ctx, req)`)
 		g.P()
 
 		if httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH" {
@@ -261,6 +275,47 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.P(`return `, g.jujuErrorsPkg.Use(), `.Trace(err)`)
 			g.P(`}`)
 			g.P(`}`)
+			g.P()
+		}
+
+		for param, value := range queryParams {
+			g.P("{ // populate ", param, "=", value)
+			g.P("var msg0 = &input")
+
+			partType := inputType
+			parts := strings.Split(value, ".")
+			lastIdx := len(parts) - 1
+			for i, part := range parts {
+				field := partType.GetFieldDescriptor(part)
+				fieldGoName := g.gen.GetFieldName(partType, field)
+
+				if i == lastIdx {
+					partType = nil
+					if !field.IsString() {
+						g.gen.Fail("expected a string")
+					}
+
+					g.P("msg", i, ".", fieldGoName, " = req.URL.Query().Get(", strconv.Quote(param), ")")
+
+				} else {
+					if !field.IsMessage() {
+						g.gen.Fail("expected a message")
+					}
+
+					if gogoproto.IsNullable(field) {
+						g.P(`if msg`, i, `.`, fieldGoName, ` == nil {`)
+						g.P("msg", i, ".", fieldGoName, " = &", g.typeName(field.GetTypeName()), "{}")
+						g.P(`}`)
+						g.P("var msg", i+1, " = msg", i, ".", fieldGoName)
+					} else {
+						g.P("var msg", i+1, " = &msg", i, ".", fieldGoName)
+					}
+
+					partType = g.gen.ObjectNamed(field.GetTypeName()).(*generator.Descriptor)
+				}
+			}
+
+			g.P("}")
 			g.P()
 		}
 
@@ -311,12 +366,11 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.P(`if err != nil {`)
 			g.P(`return `, g.jujuErrorsPkg.Use(), `.Trace(err)`)
 			g.P(`}`)
-			g.P(g.grpcUtilPkg.Use(), `.RenderMessageJSON(rw, 200, output)`)
+			g.P(g.runtimePkg.Use(), `.RenderMessageJSON(rw, 200, output)`)
 			g.P("return nil")
 		} else {
 			if info.Paged {
-				g.P(`marker := req.URL.Query().Get("after")`)
-				g.P(`ss, err := `, g.grpcUtilPkg.Use(), `.NewPagedServerStream(ctx, rw, marker, `, int(info.PageSize), `)`)
+				g.P(`ss, err := `, g.runtimePkg.Use(), `.NewPagedServerStream(ctx, rw, `, int(info.PageSize), `)`)
 				g.P(`if err != nil {`)
 				g.P(`return `, g.jujuErrorsPkg.Use(), `.Trace(err)`)
 				g.P(`}`)
