@@ -39,6 +39,7 @@ type svchttp struct {
 	gen *generator.Generator
 
 	imports       generator.PluginImports
+	strconvPkg    generator.Single
 	httpPkg       generator.Single
 	grpcPkg       generator.Single
 	contextPkg    generator.Single
@@ -87,6 +88,7 @@ func (g *svchttp) Generate(file *generator.FileDescriptor) {
 
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
+	g.strconvPkg = imp.NewImport("strconv")
 	g.contextPkg = imp.NewImport(contextPkgPath)
 	g.grpcCodesPkg = imp.NewImport(grpcCodesPkgPath)
 	g.grpcPkg = imp.NewImport(grpcPkgPath)
@@ -196,6 +198,10 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.gen.Fail("xyz.featherhead.http requires a method: pattern")
 		}
 
+		if idx := strings.IndexRune(pattern, '?'); idx >= 0 {
+			pattern = pattern[:idx]
+		}
+
 		handlerMethod := g.generateServerCallName(servName, method)
 		g.P(`router.Addf(`, strconv.Quote(httpMethod), `,`, strconv.Quote(pattern), `, h. `, handlerMethod, `)`)
 	}
@@ -208,9 +214,6 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 		inputTypeName := method.GetInputType()
 		inputType, _ := g.gen.ObjectNamed(inputTypeName).(*generator.Descriptor)
-
-		outputTypeName := method.GetOutputType()
-		outputType, _ := g.gen.ObjectNamed(outputTypeName).(*generator.Descriptor)
 
 		httpMethod, pattern, ok := api.GetMethodAndPattern()
 		queryParams := map[string]string{}
@@ -246,11 +249,6 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 		handlerMethod := g.generateServerCallName(servName, method)
 		jujuErrors := g.jujuErrorsPkg.Use()
 		g.P("func (h* ", handlerName, " )", handlerMethod, "(ctx ", contextContext, ", rw ", httpResponseWriter, ", req *", httpRequest, ") error {")
-		g.P("// info:      ", info.String())
-		g.P("//   method:  ", httpMethod)
-		g.P("//   pattern: ", pattern)
-		g.P("//   input:   ", inputType.String())
-		g.P("//   output:  ", outputType.String())
 		g.P("if req.Method != ", strconv.Quote(httpMethod), "{")
 		g.P(`  return `, jujuErrors, `.MethodNotAllowedf("expected `, httpMethod, ` request")`)
 		g.P("}")
@@ -279,85 +277,13 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 		}
 
 		for param, value := range queryParams {
-			g.P("{ // populate ", param, "=", value)
-			g.P("var msg0 = &input")
-
-			partType := inputType
-			parts := strings.Split(value, ".")
-			lastIdx := len(parts) - 1
-			for i, part := range parts {
-				field := partType.GetFieldDescriptor(part)
-				fieldGoName := g.gen.GetFieldName(partType, field)
-
-				if i == lastIdx {
-					partType = nil
-					if !field.IsString() {
-						g.gen.Fail("expected a string")
-					}
-
-					g.P("msg", i, ".", fieldGoName, " = req.URL.Query().Get(", strconv.Quote(param), ")")
-
-				} else {
-					if !field.IsMessage() {
-						g.gen.Fail("expected a message")
-					}
-
-					if gogoproto.IsNullable(field) {
-						g.P(`if msg`, i, `.`, fieldGoName, ` == nil {`)
-						g.P("msg", i, ".", fieldGoName, " = &", g.typeName(field.GetTypeName()), "{}")
-						g.P(`}`)
-						g.P("var msg", i+1, " = msg", i, ".", fieldGoName)
-					} else {
-						g.P("var msg", i+1, " = &msg", i, ".", fieldGoName)
-					}
-
-					partType = g.gen.ObjectNamed(field.GetTypeName()).(*generator.Descriptor)
-				}
-			}
-
-			g.P("}")
-			g.P()
+			g.P("// populate ", param, "=", value)
+			g.generateHttpMapping(inputType, value, "req.URL.Query().Get("+strconv.Quote(param)+")")
 		}
 
 		for _, v := range vars {
-			g.P("{ // populate ", v.Name)
-			g.P("var msg0 = &input")
-
-			partType := inputType
-			parts := strings.Split(v.Name, ".")
-			lastIdx := len(parts) - 1
-			for i, part := range parts {
-				field := partType.GetFieldDescriptor(part)
-				fieldGoName := g.gen.GetFieldName(partType, field)
-
-				if i == lastIdx {
-					partType = nil
-					if !field.IsString() {
-						g.gen.Fail("expected a string")
-					}
-
-					g.P("msg", i, ".", fieldGoName, " = params.Get(", strconv.Quote(v.Name), ")")
-
-				} else {
-					if !field.IsMessage() {
-						g.gen.Fail("expected a message")
-					}
-
-					if gogoproto.IsNullable(field) {
-						g.P(`if msg`, i, `.`, fieldGoName, ` == nil {`)
-						g.P("msg", i, ".", fieldGoName, " = &", g.typeName(field.GetTypeName()), "{}")
-						g.P(`}`)
-						g.P("var msg", i+1, " = msg", i, ".", fieldGoName)
-					} else {
-						g.P("var msg", i+1, " = &msg", i, ".", fieldGoName)
-					}
-
-					partType = g.gen.ObjectNamed(field.GetTypeName()).(*generator.Descriptor)
-				}
-			}
-
-			g.P("}")
-			g.P()
+			g.P("// populate ", v.Name)
+			g.generateHttpMapping(inputType, v.Name, "params.Get("+strconv.Quote(v.Name)+")")
 		}
 
 		g.P(`{ // call`)
@@ -390,6 +316,69 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 	}
 
+}
+
+func (g *svchttp) generateHttpMapping(inputType *generator.Descriptor, path string, value string) {
+	g.P("{")
+	g.P("var msg0 = &input")
+
+	partType := inputType
+	parts := strings.Split(path, ".")
+	lastIdx := len(parts) - 1
+	for i, part := range parts {
+		field := partType.GetFieldDescriptor(part)
+		fieldGoName := g.gen.GetFieldName(partType, field)
+
+		if i == lastIdx {
+			partType = nil
+
+			g.P("val := ", value)
+			if field.IsString() {
+				g.P("msg", i, ".", fieldGoName, " = val")
+			} else if field.IsBytes() {
+				g.P("msg", i, ".", fieldGoName, " = []byte(val)")
+			} else if *field.Type == pb.FieldDescriptorProto_TYPE_INT64 ||
+				*field.Type == pb.FieldDescriptorProto_TYPE_SINT64 ||
+				*field.Type == pb.FieldDescriptorProto_TYPE_SFIXED64 {
+				g.P("intVal, _ := ", g.strconvPkg.Use(), ".ParseInt(val, 10, 64)")
+				g.P("msg", i, ".", fieldGoName, " = int64(intVal)")
+			} else if *field.Type == pb.FieldDescriptorProto_TYPE_INT32 ||
+				*field.Type == pb.FieldDescriptorProto_TYPE_SINT32 ||
+				*field.Type == pb.FieldDescriptorProto_TYPE_SFIXED32 {
+				g.P("intVal, _ := ", g.strconvPkg.Use(), ".ParseInt(val, 10, 32)")
+				g.P("msg", i, ".", fieldGoName, " = int32(intVal)")
+			} else if *field.Type == pb.FieldDescriptorProto_TYPE_UINT64 ||
+				*field.Type == pb.FieldDescriptorProto_TYPE_FIXED64 {
+				g.P("intVal, _ := ", g.strconvPkg.Use(), ".ParseUint(val, 10, 64)")
+				g.P("msg", i, ".", fieldGoName, " = uint64(intVal)")
+			} else if *field.Type == pb.FieldDescriptorProto_TYPE_UINT32 ||
+				*field.Type == pb.FieldDescriptorProto_TYPE_FIXED32 {
+				g.P("intVal, _ := ", g.strconvPkg.Use(), ".ParseUint(val, 10, 32)")
+				g.P("msg", i, ".", fieldGoName, " = uint32(intVal)")
+			} else {
+				g.gen.Fail("expected a string")
+			}
+
+		} else {
+			if !field.IsMessage() {
+				g.gen.Fail("expected a message")
+			}
+
+			if gogoproto.IsNullable(field) {
+				g.P(`if msg`, i, `.`, fieldGoName, ` == nil {`)
+				g.P("msg", i, ".", fieldGoName, " = &", g.typeName(field.GetTypeName()), "{}")
+				g.P(`}`)
+				g.P("var msg", i+1, " = msg", i, ".", fieldGoName)
+			} else {
+				g.P("var msg", i+1, " = &msg", i, ".", fieldGoName)
+			}
+
+			partType = g.gen.ObjectNamed(field.GetTypeName()).(*generator.Descriptor)
+		}
+	}
+
+	g.P("}")
+	g.P()
 }
 
 // generateServerSignature returns the server-side signature for a method.

@@ -1,0 +1,53 @@
+syntax = "proto3";
+
+
+package xyz.featherhead.tests;
+option go_package = "tests";
+
+import "github.com/fd/featherhead/tools/runtime/svchttp/annotations.proto";
+
+service TestService {
+
+  // Get a greeting using a Person
+  rpc Greet(Person) returns (Greeting) {
+    option (api.http) = {
+      post: "/greet"
+    };
+  };
+
+  // List all indexes
+  rpc List(ListOptions) returns (stream Item) {
+    option (api.http) = {
+      get: "/list?after={after}"
+      paged: true
+    };
+  };
+
+  // Fetch a person
+  rpc FetchPerson(FetchOptions) returns (Person) {
+    option (api.http) = {
+      get: "/person/{id}"
+    };
+  };
+
+}
+
+message Person {
+  string name = 1;
+}
+
+message Greeting {
+  string text = 1;
+}
+
+message ListOptions {
+  int64 after = 1;
+}
+
+message FetchOptions {
+  int64 id = 1;
+}
+
+message Item {
+  int64 index = 1;
+}

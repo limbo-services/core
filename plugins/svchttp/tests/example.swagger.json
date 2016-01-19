@@ -1,0 +1,49 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "Featherhead - TestService",
+    "version": "1"
+  },
+  "schemes": [
+    "https",
+    "wss"
+  ],
+  "consumes": [
+    "application/json; charset=utf-8"
+  ],
+  "produces": [
+    "application/json; charset=utf-8"
+  ],
+  "paths": {
+    "/greet": {
+      "post": {
+        "description": "Get a greeting using a Person",
+        "responses": {
+          "200": {
+            "description": "Response on success"
+          }
+        }
+      }
+    },
+    "/list?after={after}": {
+      "get": {
+        "description": "List all indexes",
+        "responses": {
+          "200": {
+            "description": "Response on success"
+          }
+        }
+      }
+    },
+    "/person/{id}": {
+      "get": {
+        "description": "Fetch a person",
+        "responses": {
+          "200": {
+            "description": "Response on success"
+          }
+        }
+      }
+    }
+  }
+}
