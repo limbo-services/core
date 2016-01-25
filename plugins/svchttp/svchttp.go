@@ -2,15 +2,17 @@ package svchttp
 
 import (
 	"fmt"
+	"os"
 	"strconv"
 	"strings"
 
-	"github.com/fd/featherhead/pkg/api/httpapi/router"
-	runtime "github.com/fd/featherhead/tools/runtime/svchttp"
 	"github.com/gogo/protobuf/gogoproto"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
+
+	"github.com/fd/featherhead/pkg/api/httpapi/router"
+	. "github.com/fd/featherhead/tools/runtime/svchttp"
 )
 
 // Paths for packages used by code generated in this file,
@@ -79,6 +81,11 @@ func (g *svchttp) P(args ...interface{}) { g.gen.P(args...) }
 
 // Generate generates code for the services in the given file.
 func (g *svchttp) Generate(file *generator.FileDescriptor) {
+	for i, message := range file.Messages() {
+		fmt.Fprintf(os.Stderr, "MSG: %v\n", message.TypeName())
+		g.generateMessageSchema(file, message, i)
+	}
+
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}
@@ -114,7 +121,7 @@ func unexport(s string) string { return strings.ToLower(s[:1]) + s[1:] }
 type API struct {
 	service       *pb.ServiceDescriptorProto
 	method        *pb.MethodDescriptorProto
-	desc          *runtime.HttpRule
+	desc          *HttpRule
 	descIndexPath string
 }
 
@@ -123,8 +130,8 @@ func filterAPIs(service *pb.ServiceDescriptorProto, methods []*pb.MethodDescript
 	path := fmt.Sprintf("6,%d", svcIndex) // 6 means service.
 
 	for i, method := range methods {
-		v, _ := proto.GetExtension(method.Options, runtime.E_Http)
-		info, _ := v.(*runtime.HttpRule)
+		v, _ := proto.GetExtension(method.Options, E_Http)
+		info, _ := v.(*HttpRule)
 		if info != nil {
 			apis = append(apis, &API{
 				service:       service,
@@ -141,19 +148,19 @@ func filterAPIs(service *pb.ServiceDescriptorProto, methods []*pb.MethodDescript
 func (api *API) GetMethodAndPattern() (method, pattern string, ok bool) {
 
 	switch x := api.desc.GetPattern().(type) {
-	case *runtime.HttpRule_Get:
+	case *HttpRule_Get:
 		method = "GET"
 		pattern = x.Get
-	case *runtime.HttpRule_Post:
+	case *HttpRule_Post:
 		method = "POST"
 		pattern = x.Post
-	case *runtime.HttpRule_Put:
+	case *HttpRule_Put:
 		method = "PUT"
 		pattern = x.Put
-	case *runtime.HttpRule_Patch:
+	case *HttpRule_Patch:
 		method = "PATCH"
 		pattern = x.Patch
-	case *runtime.HttpRule_Delete:
+	case *HttpRule_Delete:
 		method = "DELETE"
 		pattern = x.Delete
 	default:
@@ -414,4 +421,22 @@ func (g *svchttp) generateServerCall(servName string, method *pb.MethodDescripto
 	}
 
 	return methName + "(" + strings.Join(reqArgs, ", ") + ") "
+}
+
+func (g *svchttp) generateMessageSchema(file *generator.FileDescriptor, msg *generator.Descriptor, index int) {
+	spec := g.loadSwaggerSpec(file)
+	defer g.saveSwaggerSpec(file, spec)
+
+	if spec.Definitions == nil {
+		spec.Definitions = map[string]interface{}{}
+	}
+
+	typeName := file.GetPackage() + "." + strings.Join(msg.TypeName(), ".")
+	typeName = strings.TrimPrefix(typeName, ".")
+
+	msgDef := spec.Definitions[typeName]
+	if msgDef == nil {
+		msgDef = messageToSchema(g.gen, msg)
+		spec.Definitions[typeName] = msgDef
+	}
 }

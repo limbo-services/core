@@ -2,25 +2,18 @@ package svcauth
 
 import (
 	"fmt"
+	"os"
 	"path"
 	"strings"
 
+	"github.com/gogo/protobuf/gogoproto"
 	"github.com/gogo/protobuf/jsonpb"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
 
-	grpcutil "github.com/fd/featherhead/pkg/api/grpcutil"
-)
-
-// Paths for packages used by code generated in this file,
-// relative to the import_prefix of the generator.Generator.
-const (
-	contextPkgPath   = "golang.org/x/net/context"
-	grpcPkgPath      = "google.golang.org/grpc"
-	grpcCodesPkgPath = "google.golang.org/grpc/codes"
-	grpcutilPkgPath  = "github.com/fd/featherhead/pkg/api/grpcutil"
+	. "github.com/fd/featherhead/tools/runtime/svcauth"
 )
 
 func init() {
@@ -31,6 +24,9 @@ func init() {
 // plugin architecture.  It generates bindings for gRPC support.
 type svcauth struct {
 	gen *generator.Generator
+
+	imports    generator.PluginImports
+	contextPkg generator.Single
 }
 
 // Name returns the name of this plugin, "grpc".
@@ -68,11 +64,11 @@ func (g *svcauth) Generate(file *generator.FileDescriptor) {
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}
-	g.P("// Reference imports to suppress errors if they are not otherwise used.")
-	g.P("var _ context_svcauth.Context")
-	g.P("var _ grpc_svcauth.Codec")
-	g.P("var _ codes_svcauth.Code")
-	g.P()
+
+	imp := generator.NewPluginImports(g.gen)
+	g.imports = imp
+	g.contextPkg = imp.NewImport("golang.org/x/net/context")
+
 	for i, service := range file.FileDescriptorProto.Service {
 		g.generateService(file, service, i)
 	}
@@ -83,10 +79,8 @@ func (g *svcauth) GenerateImports(file *generator.FileDescriptor) {
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}
-	g.gen.PrintImport("context_svcauth", contextPkgPath)
-	g.gen.PrintImport("grpc_svcauth", grpcPkgPath)
-	g.gen.PrintImport("codes_svcauth", grpcCodesPkgPath)
-	g.gen.PrintImport("grpcutil_svcauth", grpcutilPkgPath)
+
+	g.imports.GenerateImports(file)
 }
 
 func unexport(s string) string { return strings.ToLower(s[:1]) + s[1:] }
@@ -105,7 +99,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 	innerServerType := servName + "Server"
 	serverType := unexport(servName) + "ServerAuthGuard"
 	g.P("type ", serverType, " struct {")
-	g.P("authenticator grpcutil_svcauth.Authenticator")
+	g.P("authenticator ", innerServerType, "Auth")
 	g.P("inner ", innerServerType)
 	g.P("}")
 	g.P()
@@ -113,36 +107,112 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 	g.P("var _ ", innerServerType, " = (*", serverType, ")(nil)")
 	g.P()
 
-	g.P("func New", servName, "ServerAuthGuard(inner ", innerServerType, ", auth grpcutil_svcauth.Authenticator) ", innerServerType, " {")
+	g.P("func New", servName, "ServerAuthGuard(inner ", innerServerType, `, auth `, innerServerType, `Auth) `, innerServerType, " {")
 	g.P("return &", serverType, "{inner: inner, authenticator: auth}")
 	g.P("}")
 	g.P()
+
+	g.P(`type `, innerServerType, `Auth interface {`)
+	var seenCallerTypes = map[string]bool{}
+	for _, authMethod := range methods {
+		method, authnInfo := authMethod.method, authMethod.Authn
+
+		inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
+		var callerType, _ = g.lookupMessageType(inputType, authnInfo.Caller)
+
+		if !seenCallerTypes[callerType] {
+			seenCallerTypes[callerType] = true
+			g.P(`AuthenticateAs`, callerType, `(ctx `, g.contextPkg.Use(), `.Context, strategies []string, caller *`, callerType, `) error`)
+		}
+	}
+	g.P(``)
+	var seenCallerContextTypes = map[string]bool{}
+	for _, authMethod := range methods {
+		method, authzInfo := authMethod.method, authMethod.Authz
+		if authzInfo == nil {
+			continue
+		}
+
+		inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
+		var callerType, _ = g.lookupMessageType(inputType, authzInfo.Caller)
+
+		if authzInfo.Context != "" {
+			var contextType, _ = g.lookupMessageType(inputType, authzInfo.Context)
+			id := callerType + "/" + contextType
+			if !seenCallerContextTypes[id] {
+				seenCallerContextTypes[id] = true
+				g.P(`Authorize`, callerType, `For`, contextType, `(ctx `, g.contextPkg.Use(), `.Context, scopes []string, caller *`, callerType, `, context *`, contextType, `) error`)
+			}
+		} else {
+			id := callerType
+			if !seenCallerContextTypes[id] {
+				seenCallerContextTypes[id] = true
+				g.P(`Authorize`, callerType, `(ctx `, g.contextPkg.Use(), `.Context, scopes []string, caller *`, callerType, `) error`)
+			}
+		}
+	}
+	g.P(`}`)
+	g.P("")
+
+	// Server handler implementations.
+	var rules = map[string]int{}
+	g.P("var (")
+	for _, authMethod := range methods {
+		authnInfo, authzInfo := authMethod.Authn, authMethod.Authz
+		var rule string
+
+		if authnInfo != nil && len(authnInfo.Strategies) > 0 {
+			rule = fmt.Sprintf("%#v", authnInfo.Strategies)
+		} else {
+			rule = "[]string{}"
+		}
+		if id, found := rules[rule]; !found {
+			id = len(rules) + 1
+			g.P("authRule_", servName, "_", id, " = ", rule)
+			rules[rule] = id
+			authMethod.authnRuleID = id
+		} else {
+			authMethod.authnRuleID = id
+		}
+
+		if authzInfo != nil && len(authzInfo.Scopes) > 0 {
+			rule = fmt.Sprintf("%#v", authzInfo.Scopes)
+		} else {
+			rule = "[]string{}"
+		}
+		if id, found := rules[rule]; !found {
+			id = len(rules) + 1
+			g.P("authRule_", servName, "_", id, " = ", rule)
+			rules[rule] = id
+			authMethod.authzRuleID = id
+		} else {
+			authMethod.authzRuleID = id
+		}
+	}
+	g.P(")")
+	g.P("")
 
 	// Server handler implementations.
 	for _, authMethod := range methods {
 		method, authnInfo, authzInfo := authMethod.method, authMethod.Authn, authMethod.Authz
 
-		authnRuleName := g.generateAuthnRuleName(servName, method)
-		authzRuleName := g.generateAuthzRuleName(servName, method)
-		g.P("var (")
-		g.P(authnRuleName, " *grpcutil_svcauth.AuthnRule = ", replaceFhAnnotationNames(authnInfo.GoString()))
-		g.P(authzRuleName, " *grpcutil_svcauth.AuthzRule = ", replaceFhAnnotationNames(authzInfo.GoString()))
-		g.P(")")
-		g.P("")
+		inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
+		var callerType, _ = g.lookupMessageType(inputType, authnInfo.Caller)
 
 		g.P("func (s *", serverType, ") ", g.generateServerSignature(servName, method), " {")
 		g.P("var (")
-		g.P("info grpcutil_svcauth.AuthInfo")
 		if method.GetServerStreaming() || method.GetClientStreaming() {
 			g.P("ctx = stream.Context()")
-
-			streamName := servName + generator.CamelCase(method.GetName()) + "Server"
-			streamPtrName := unexport(streamName)
-			g.P(`streamPtr = stream.(*`, streamPtrName, `)`)
+		}
+		g.P(`caller `, callerType)
+		if authzInfo != nil && authzInfo.Context != "" {
+			var contextType, _ = g.lookupMessageType(inputType, authzInfo.Context)
+			g.P(`context *`, contextType)
 		}
 		g.P(")")
 
-		g.P("if err := s.authenticator.Authn(ctx, ", authnRuleName, ", &info); err != nil {")
+		// Authenticate
+		g.P("if err := s.authenticator.AuthenticateAs", callerType, "(ctx, ", "authRule_", servName, "_", authMethod.authnRuleID, ", &caller); err != nil {")
 		if !method.GetServerStreaming() && !method.GetClientStreaming() {
 			g.P("return nil, err")
 		} else {
@@ -151,7 +221,18 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P("}")
 
 		if authzInfo != nil {
-			g.P("if err := s.authenticator.Authz(ctx, ", authzRuleName, ", &info); err != nil {")
+			var methodName string
+			var args string
+			if authzInfo.Context != "" {
+				var contextType, _ = g.lookupMessageType(inputType, authzInfo.Context)
+				methodName = `Authorize` + callerType + `For` + contextType
+				args = "&caller, context"
+				g.getMessage(inputType, authzInfo.Context, "input", "context", true)
+			} else {
+				methodName = `Authorize` + callerType
+				args = "&caller"
+			}
+			g.P("if err := s.authenticator.", methodName, "(ctx, ", "authRule_", servName, "_", authMethod.authzRuleID, ", ", args, "); err != nil {")
 			if !method.GetServerStreaming() && !method.GetClientStreaming() {
 				g.P("return nil, err")
 			} else {
@@ -161,22 +242,16 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.P("")
 		}
 
-		g.P(`ctx = grpcutil_svcauth.ContextWithAuthInfo(ctx, &info)`)
-
-		if method.GetServerStreaming() || method.GetClientStreaming() {
-			g.P(`streamPtr.ServerStream = grpcutil_svcauth.WrapServerStreamContext(streamPtr.ServerStream, ctx)`)
-		}
-
 		g.P("return s.inner.", g.generateServerCall(servName, method))
 		g.P("}")
 		g.P()
 	}
 
 	{
-		var desc = grpcutil.AuthDescriptionSet{}
+		var desc = AuthDescriptionSet{}
 
 		for _, m := range methods {
-			desc.Methods = append(desc.Methods, &grpcutil.AuthDescription{
+			desc.Methods = append(desc.Methods, &AuthDescription{
 				Method: m.Name,
 				Authn:  m.Authn,
 				Authz:  m.Authz,
@@ -208,7 +283,7 @@ func (g *svcauth) generateServerSignature(servName string, method *pb.MethodDesc
 	var reqArgs []string
 	ret := "error"
 	if !method.GetServerStreaming() && !method.GetClientStreaming() {
-		reqArgs = append(reqArgs, "ctx context_svcauth.Context")
+		reqArgs = append(reqArgs, "ctx "+g.contextPkg.Use()+".Context")
 		ret = "(*" + g.typeName(method.GetOutputType()) + ", error)"
 	}
 	if !method.GetClientStreaming() {
@@ -263,59 +338,56 @@ func (g *svcauth) generateAuthzRuleName(servName string, method *pb.MethodDescri
 	return "authz_" + servName + "_" + methName
 }
 
-func replaceFhAnnotationNames(s string) string {
-	return strings.Replace(s, "grpcutil.", "grpcutil_svcauth.", -1)
-}
-
 type authMethod struct {
-	file    *generator.FileDescriptor
-	service *pb.ServiceDescriptorProto
-	method  *pb.MethodDescriptorProto
-	Name    string              `json:"method"`
-	Authn   *grpcutil.AuthnRule `json:"authn"`
-	Authz   *grpcutil.AuthzRule `json:"authz" `
+	file        *generator.FileDescriptor
+	service     *pb.ServiceDescriptorProto
+	method      *pb.MethodDescriptorProto
+	authnRuleID int
+	authzRuleID int
+	Name        string     `json:"method"`
+	Authn       *AuthnRule `json:"authn"`
+	Authz       *AuthzRule `json:"authz"`
 }
 
 func (g *svcauth) findMethods(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto) []*authMethod {
 	methods := make([]*authMethod, 0, len(service.Method))
 
 	var (
-		defaultAuthnInfo *grpcutil.AuthnRule
-		defaultAuthzInfo *grpcutil.AuthzRule
+		defaultAuthnInfo *AuthnRule
+		defaultAuthzInfo *AuthzRule
 	)
 
 	if service.Options != nil {
-		v, _ := proto.GetExtension(service.Options, grpcutil.E_DefaultAuthn)
-		defaultAuthnInfo, _ = v.(*grpcutil.AuthnRule)
+		v, _ := proto.GetExtension(service.Options, E_DefaultAuthn)
+		defaultAuthnInfo, _ = v.(*AuthnRule)
 	}
 
 	if service.Options != nil {
-		v, _ := proto.GetExtension(service.Options, grpcutil.E_DefaultAuthz)
-		defaultAuthzInfo, _ = v.(*grpcutil.AuthzRule)
+		v, _ := proto.GetExtension(service.Options, E_DefaultAuthz)
+		defaultAuthzInfo, _ = v.(*AuthzRule)
 	}
 
 	for _, method := range service.Method {
 		var (
-			authnInfo *grpcutil.AuthnRule
-			authzInfo *grpcutil.AuthzRule
+			authnInfo *AuthnRule
+			authzInfo *AuthzRule
 		)
 
 		{ // authn
-			v, _ := proto.GetExtension(method.Options, grpcutil.E_Authn)
-			authnInfo, _ = v.(*grpcutil.AuthnRule)
+			v, _ := proto.GetExtension(method.Options, E_Authn)
+			authnInfo, _ = v.(*AuthnRule)
 			if authnInfo == nil {
-				authnInfo = &grpcutil.AuthnRule{}
-				authnInfo.Gateway = grpcutil.AuthnRule_DENY
+				authnInfo = &AuthnRule{}
 			}
-			authnInfo.Inherit(defaultAuthnInfo)
+			authnInfo = defaultAuthnInfo.Inherit(authnInfo)
 			authnInfo.SetDefaults()
 		}
 
 		{ // authz
-			v, _ := proto.GetExtension(method.Options, grpcutil.E_Authz)
-			authzInfo, _ = v.(*grpcutil.AuthzRule)
-			authzInfo.Inherit(defaultAuthzInfo)
-			_ = authzInfo
+			v, _ := proto.GetExtension(method.Options, E_Authz)
+			authzInfo, _ = v.(*AuthzRule)
+			authzInfo = defaultAuthzInfo.Inherit(authzInfo)
+			authzInfo.SetDefaults()
 		}
 
 		methods = append(methods, &authMethod{
@@ -337,4 +409,94 @@ func authSpecFileName(name string) string {
 		name = name[0 : len(name)-len(ext)]
 	}
 	return name + ".auth.json"
+}
+
+func (g *svcauth) lookupMessageType(inputType *generator.Descriptor, path string) (typeName string, isPtr bool) {
+	partType := inputType
+	parts := strings.Split(path, ".")
+	lastIdx := len(parts) - 1
+	for i, part := range parts {
+		field := partType.GetFieldDescriptor(part)
+		if field == nil {
+			g.gen.Fail("unknown field", part, "in path", partType.GetName())
+		}
+		if !field.IsMessage() {
+			g.gen.Fail("expected a message")
+		}
+
+		if lastIdx == i {
+			if gogoproto.IsNullable(field) {
+				return g.typeName(field.GetTypeName()), true
+			} else {
+				return g.typeName(field.GetTypeName()), false
+			}
+		}
+
+		partType = g.gen.ObjectNamed(field.GetTypeName()).(*generator.Descriptor)
+	}
+
+	panic("unreachable")
+}
+
+func (g *svcauth) getMessage(inputType *generator.Descriptor, path, input, output string, inputIsNullable bool) {
+	var (
+		checks []string
+		goPath string
+	)
+
+	goPath = input
+	if inputIsNullable {
+		checks = append(checks, input+" != nil")
+	}
+
+	for path != "" {
+
+		// split path
+		part := path
+		idx := strings.IndexByte(path, '.')
+		if idx >= 0 {
+			part = path[:idx]
+			path = path[idx+1:]
+		} else {
+			path = ""
+		}
+
+		// Get Field
+		field := inputType.GetFieldDescriptor(part)
+		if field == nil {
+			g.gen.Fail("unknown field", part, "in message", inputType.GetName())
+		}
+		if !field.IsMessage() {
+			g.gen.Fail("expected a message")
+		}
+
+		// Append code
+		fieldGoName := g.gen.GetFieldName(inputType, field)
+		goPath += "." + fieldGoName
+		if gogoproto.IsNullable(field) {
+			checks = append(checks, goPath+" != nil")
+		}
+
+		switch x := g.gen.ObjectNamed(field.GetTypeName()).(type) {
+		case *generator.Descriptor:
+			inputType = x
+		case *generator.ImportedDescriptor:
+			// f := g.gen.FileOf(x.File())
+			f := x.File()
+			fmt.Fprintf(os.Stderr, "x.TypeName    => %s\n", x.TypeName())
+			fmt.Fprintf(os.Stderr, "x.PackageName => %s\n", x.PackageName())
+			fmt.Fprintf(os.Stderr, "x.File        => %s\n", f.GetName())
+			panic("invalid")
+		default:
+			panic("invalid")
+		}
+	}
+
+	if len(checks) > 0 {
+		g.P(`if `, strings.Join(checks, " && "), `{`)
+		g.P(output, ` = `, goPath)
+		g.P(`}`)
+	} else {
+		g.P(output, ` = `, goPath)
+	}
 }

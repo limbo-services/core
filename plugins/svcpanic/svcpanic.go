@@ -7,14 +7,6 @@ import (
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 )
 
-// Paths for packages used by code generated in this file,
-// relative to the import_prefix of the generator.Generator.
-const (
-	contextPkgPath = "golang.org/x/net/context"
-	grpcPkgPath    = "google.golang.org/grpc"
-	runtimePkgPath = "github.com/fd/featherhead/tools/runtime/svcpanic"
-)
-
 func init() {
 	generator.RegisterPlugin(new(svcpanic))
 }
@@ -68,9 +60,9 @@ func (g *svcpanic) Generate(file *generator.FileDescriptor) {
 
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
-	g.contextPkg = imp.NewImport(contextPkgPath)
-	g.grpcPkg = imp.NewImport(grpcPkgPath)
-	g.runtimePkg = imp.NewImport(runtimePkgPath)
+	g.contextPkg = imp.NewImport("golang.org/x/net/context")
+	g.grpcPkg = imp.NewImport("google.golang.org/grpc")
+	g.runtimePkg = imp.NewImport("github.com/fd/featherhead/tools/runtime/svcpanic")
 
 	for i, service := range file.FileDescriptorProto.Service {
 		g.generateService(file, service, i)

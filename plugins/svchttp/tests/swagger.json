@@ -18,16 +18,20 @@
     "/greet": {
       "post": {
         "description": "Get a greeting using a Person",
+        "parameters": [
+          {
+            "name": "parameters",
+            "in": "body",
+            "schema": {
+              "$ref": "#/definitions/xyz.featherhead.tests.Person"
+            }
+          }
+        ],
         "responses": {
           "200": {
             "description": "Response on success",
             "schema": {
-              "properties": {
-                "text": {
-                  "type": "string"
-                }
-              },
-              "type": "object"
+              "$ref": "#/definitions/xyz.featherhead.tests.Greeting"
             }
           }
         },
@@ -39,16 +43,18 @@
     "/list": {
       "get": {
         "description": "List all indexes",
+        "parameters": [
+          {
+            "name": "after",
+            "in": "query",
+            "type": "string"
+          }
+        ],
         "responses": {
           "200": {
             "description": "Response on success",
             "schema": {
-              "properties": {
-                "index": {
-                  "type": "integer"
-                }
-              },
-              "type": "object"
+              "$ref": "#/definitions/xyz.featherhead.tests.Item"
             }
           }
         },
@@ -74,12 +80,7 @@
           "200": {
             "description": "Response on success",
             "schema": {
-              "properties": {
-                "name": {
-                  "type": "string"
-                }
-              },
-              "type": "object"
+              "$ref": "#/definitions/xyz.featherhead.tests.Person"
             }
           }
         },
@@ -87,6 +88,48 @@
           "TestService"
         ]
       }
+    }
+  },
+  "definitions": {
+    "xyz.featherhead.tests.FetchOptions": {
+      "properties": {
+        "id": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "xyz.featherhead.tests.Greeting": {
+      "properties": {
+        "text": {
+          "type": "string"
+        }
+      },
+      "type": "object"
+    },
+    "xyz.featherhead.tests.Item": {
+      "properties": {
+        "index": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "xyz.featherhead.tests.ListOptions": {
+      "properties": {
+        "after": {
+          "type": "integer"
+        }
+      },
+      "type": "object"
+    },
+    "xyz.featherhead.tests.Person": {
+      "properties": {
+        "name": {
+          "type": "string"
+        }
+      },
+      "type": "object"
     }
   }
 }

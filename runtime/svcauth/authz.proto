@@ -1,0 +1,19 @@
+syntax = "proto3";
+
+package xyz.featherhead.api;
+option go_package = "svcauth";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+message AuthzRule {
+  option (gogoproto.gostring) = true;
+
+  // Path to caller identifier.
+  string caller = 1;
+
+  // Path to context identifier.
+  string context = 2;
+
+  // Scopes that give permission to call the RPC
+  repeated string scope = 3 [(gogoproto.customname) = "Scopes"];
+}

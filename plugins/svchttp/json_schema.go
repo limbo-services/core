@@ -1,6 +1,9 @@
 package svchttp
 
 import (
+	"fmt"
+	"strings"
+
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 )
@@ -60,9 +63,28 @@ func fieldToSchema(gen *generator.Generator, field *pb.FieldDescriptorProto) int
 			"format": "base64",
 		}
 
+	case pb.FieldDescriptorProto_TYPE_ENUM:
+		switch messageType := gen.ObjectNamed(field.GetTypeName()).(type) {
+
+		case *generator.EnumDescriptor:
+			values := make([]interface{}, 2*len(messageType.Value))
+			for _, x := range messageType.Value {
+				values = append(values, x.GetNumber())
+				values = append(values, x.GetName())
+			}
+			return map[string]interface{}{
+				"enum": values,
+			}
+
+		default:
+			panic(fmt.Sprintf("unsuported ENUM %T", messageType))
+
+		}
+
 	case pb.FieldDescriptorProto_TYPE_MESSAGE:
-		messageType := gen.ObjectNamed(field.GetTypeName()).(*generator.Descriptor)
-		return messageToSchema(gen, messageType)
+		return map[string]interface{}{
+			"$ref": "#/definitions/" + strings.TrimPrefix(field.GetTypeName(), "."),
+		}
 
 	}
 

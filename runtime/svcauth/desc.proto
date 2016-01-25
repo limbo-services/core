@@ -1,0 +1,18 @@
+syntax = "proto3";
+
+package xyz.featherhead.api;
+option go_package = "svcauth";
+
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/fd/featherhead/tools/runtime/svcauth/authn.proto";
+import "github.com/fd/featherhead/tools/runtime/svcauth/authz.proto";
+
+message AuthDescription {
+  string method = 1;
+  AuthnRule authn = 2;
+  AuthzRule authz = 3;
+}
+
+message AuthDescriptionSet {
+  repeated AuthDescription methods = 1;
+}

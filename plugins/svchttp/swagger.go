@@ -5,11 +5,12 @@ import (
 	"path"
 	"strings"
 
-	"github.com/fd/featherhead/pkg/api/httpapi/router"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
+
+	"github.com/fd/featherhead/pkg/api/httpapi/router"
 )
 
 type SwaggerInfo struct {
@@ -20,13 +21,14 @@ type SwaggerInfo struct {
 }
 
 type SwaggerParameterObject struct {
-	Name     string `json:"name"`
-	In       string `json:"in"`
-	Type     string `json:"type"`
-	Pattern  string `json:"pattern,omitempty"`
-	Required bool   `json:"required,omitempty"`
-	MinItems int    `json:"minItems,omitempty"`
-	MaxItems int    `json:"maxItems,omitempty"`
+	Name     string      `json:"name,omitempty"`
+	In       string      `json:"in"`
+	Type     string      `json:"type,omitempty"`
+	Pattern  string      `json:"pattern,omitempty"`
+	Required bool        `json:"required,omitempty"`
+	MinItems int         `json:"minItems,omitempty"`
+	MaxItems int         `json:"maxItems,omitempty"`
+	Schema   interface{} `json:"schema,omitempty"`
 }
 
 type SwaggerResponseObject struct {
@@ -56,11 +58,15 @@ type SwaggerRoot struct {
 
 	// swagger.Paths["<path>"]
 	Paths map[string]map[string]*SwaggerOperationObject `json:"paths"`
+
+	Definitions map[string]interface{} `json:"definitions"`
 }
 
-func (g *svchttp) loadSwaggerSpec() *SwaggerRoot {
+func (g *svchttp) loadSwaggerSpec(file *generator.FileDescriptor) *SwaggerRoot {
+	expected := swaggerSpecFileName(file.GetName())
+
 	for _, file := range g.gen.Response.File {
-		if path.Base(file.GetName()) != "swagger.json" {
+		if file.GetName() != expected {
 			continue
 		}
 
@@ -89,7 +95,7 @@ func (g *svchttp) loadSwaggerSpec() *SwaggerRoot {
 }
 
 func (g *svchttp) generateSwaggerSpec(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto, apis []*API) {
-	spec := g.loadSwaggerSpec()
+	spec := g.loadSwaggerSpec(file)
 	defer g.saveSwaggerSpec(file, spec)
 
 	for _, api := range apis {
@@ -123,15 +129,23 @@ func (g *svchttp) generateSwaggerSpec(file *generator.FileDescriptor, service *p
 
 		operation.Tags = append(operation.Tags, api.service.GetName())
 
+		// inputType := g.gen.ObjectNamed(api.method.GetInputType()).(*generator.Descriptor)
 		outputType := g.gen.ObjectNamed(api.method.GetOutputType()).(*generator.Descriptor)
 
 		operation.Description = strings.TrimSpace(g.gen.Comments(api.descIndexPath))
 		operation.Responses["200"] = SwaggerResponseObject{
 			Description: "Response on success",
-			Schema:      messageToSchema(g.gen, outputType),
+			Schema: map[string]string{
+				"$ref": "#/definitions/" + file.GetPackage() + "." + strings.Join(outputType.TypeName(), "."),
+			},
 		}
 
 		g.appendPathParameters(operation, pattern)
+		g.appendQueryParameters(operation, query)
+
+		if method != "HEAD" && method != "GET" && method != "DELETE" {
+			g.appendBodyParameter(operation, api.method.GetInputType())
+		}
 	}
 
 }
@@ -170,14 +184,62 @@ func (g *svchttp) appendPathParameters(operation *SwaggerOperationObject, patter
 	}
 }
 
+func (g *svchttp) appendQueryParameters(operation *SwaggerOperationObject, queryString string) {
+	if queryString == "" {
+		return
+	}
+
+	queryParams := map[string]string{}
+	for _, pair := range strings.SplitN(queryString, "&", -1) {
+		idx := strings.Index(pair, "={")
+		if pair[len(pair)-1] != '}' || idx < 0 {
+			g.gen.Fail("invalid query paramter")
+		}
+		queryParams[pair[:idx]] = pair[idx+2 : len(pair)-1]
+	}
+
+	for k, v := range queryParams {
+		_ = v
+
+		p := SwaggerParameterObject{
+			Name: k,
+			In:   "query",
+			Type: "string",
+			//Format:
+		}
+
+		operation.Parameters = append(operation.Parameters, p)
+
+	}
+}
+
+func (g *svchttp) appendBodyParameter(operation *SwaggerOperationObject, inputType string) {
+
+	p := SwaggerParameterObject{
+		Name: "parameters",
+		In:   "body",
+		Schema: map[string]interface{}{
+			"$ref": "#/definitions/" + strings.TrimPrefix(inputType, "."),
+		},
+	}
+
+	operation.Parameters = append(operation.Parameters, p)
+
+}
+
 func (g *svchttp) saveSwaggerSpec(file *generator.FileDescriptor, root *SwaggerRoot) {
+	if strings.HasPrefix(file.GetName(), "google/") {
+		return
+	}
+
 	data, err := json.Marshal(&root)
 	if err != nil {
 		g.gen.Error(err)
 	}
 
+	expected := swaggerSpecFileName(file.GetName())
 	for _, file := range g.gen.Response.File {
-		if path.Base(file.GetName()) != "swagger.json" {
+		if file.GetName() != expected {
 			continue
 		}
 
@@ -186,7 +248,7 @@ func (g *svchttp) saveSwaggerSpec(file *generator.FileDescriptor, root *SwaggerR
 	}
 
 	g.gen.Response.File = append(g.gen.Response.File, &plugin.CodeGeneratorResponse_File{
-		Name:    proto.String(swaggerSpecFileName(file.GetName())),
+		Name:    proto.String(expected),
 		Content: proto.String(string(data)),
 	})
 }
