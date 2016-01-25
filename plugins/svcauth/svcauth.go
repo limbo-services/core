@@ -279,6 +279,21 @@ type authMethod struct {
 func (g *svcauth) findMethods(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto) []*authMethod {
 	methods := make([]*authMethod, 0, len(service.Method))
 
+	var (
+		defaultAuthnInfo *grpcutil.AuthnRule
+		defaultAuthzInfo *grpcutil.AuthzRule
+	)
+
+	if service.Options != nil {
+		v, _ := proto.GetExtension(service.Options, grpcutil.E_DefaultAuthn)
+		defaultAuthnInfo, _ = v.(*grpcutil.AuthnRule)
+	}
+
+	if service.Options != nil {
+		v, _ := proto.GetExtension(service.Options, grpcutil.E_DefaultAuthz)
+		defaultAuthzInfo, _ = v.(*grpcutil.AuthzRule)
+	}
+
 	for _, method := range service.Method {
 		var (
 			authnInfo *grpcutil.AuthnRule
@@ -292,15 +307,15 @@ func (g *svcauth) findMethods(file *generator.FileDescriptor, service *pb.Servic
 				authnInfo = &grpcutil.AuthnRule{}
 				authnInfo.Gateway = grpcutil.AuthnRule_DENY
 			}
+			authnInfo.Inherit(defaultAuthnInfo)
 			authnInfo.SetDefaults()
 		}
 
 		{ // authz
 			v, _ := proto.GetExtension(method.Options, grpcutil.E_Authz)
 			authzInfo, _ = v.(*grpcutil.AuthzRule)
-			if authzInfo != nil {
-				authzInfo.SetDefaults()
-			}
+			authzInfo.Inherit(defaultAuthzInfo)
+			_ = authzInfo
 		}
 
 		methods = append(methods, &authMethod{

@@ -1,9 +1,7 @@
 package svchttp
 
 import (
-	"encoding/json"
 	"fmt"
-	"path"
 	"strconv"
 	"strings"
 
@@ -13,7 +11,6 @@ import (
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
-	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
 )
 
 // Paths for packages used by code generated in this file,
@@ -92,9 +89,9 @@ func (g *svchttp) Generate(file *generator.FileDescriptor) {
 	g.contextPkg = imp.NewImport(contextPkgPath)
 	g.grpcCodesPkg = imp.NewImport(grpcCodesPkgPath)
 	g.grpcPkg = imp.NewImport(grpcPkgPath)
-	g.runtimePkg = imp.NewImport(runtimePkgPath)
 	g.httpPkg = imp.NewImport(httpPkgPath)
 	g.jsonPkg = imp.NewImport(jsonPkgPath)
+	g.runtimePkg = imp.NewImport(runtimePkgPath)
 	g.jujuErrorsPkg = imp.NewImport(jujuErrorsPkgPath)
 	g.routerPkg = imp.NewImport(routerPkgPath)
 
@@ -115,12 +112,13 @@ func (g *svchttp) GenerateImports(file *generator.FileDescriptor) {
 func unexport(s string) string { return strings.ToLower(s[:1]) + s[1:] }
 
 type API struct {
+	service       *pb.ServiceDescriptorProto
 	method        *pb.MethodDescriptorProto
 	desc          *runtime.HttpRule
 	descIndexPath string
 }
 
-func filterAPIs(methods []*pb.MethodDescriptorProto, svcIndex int) []*API {
+func filterAPIs(service *pb.ServiceDescriptorProto, methods []*pb.MethodDescriptorProto, svcIndex int) []*API {
 	var apis = make([]*API, 0, len(methods))
 	path := fmt.Sprintf("6,%d", svcIndex) // 6 means service.
 
@@ -129,6 +127,7 @@ func filterAPIs(methods []*pb.MethodDescriptorProto, svcIndex int) []*API {
 		info, _ := v.(*runtime.HttpRule)
 		if info != nil {
 			apis = append(apis, &API{
+				service:       service,
 				method:        method,
 				desc:          info,
 				descIndexPath: fmt.Sprintf("%s,2,%d", path, i), // 2 means method in a service.
@@ -166,7 +165,7 @@ func (api *API) GetMethodAndPattern() (method, pattern string, ok bool) {
 
 // generateService generates all the code for the named service.
 func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto, index int) {
-	apis := filterAPIs(service.Method, index)
+	apis := filterAPIs(service, service.Method, index)
 	if len(apis) == 0 {
 		return
 	}
@@ -327,6 +326,9 @@ func (g *svchttp) generateHttpMapping(inputType *generator.Descriptor, path stri
 	lastIdx := len(parts) - 1
 	for i, part := range parts {
 		field := partType.GetFieldDescriptor(part)
+		if field == nil {
+			g.gen.Fail("unknown field ", part)
+		}
 		fieldGoName := g.gen.GetFieldName(partType, field)
 
 		if i == lastIdx {
@@ -412,104 +414,4 @@ func (g *svchttp) generateServerCall(servName string, method *pb.MethodDescripto
 	}
 
 	return methName + "(" + strings.Join(reqArgs, ", ") + ") "
-}
-
-func (g *svchttp) generateSwaggerSpec(file *generator.FileDescriptor, service *pb.ServiceDescriptorProto, apis []*API) {
-
-	type Info struct {
-		Title          string `json:"title"`
-		Description    string `json:"description,omitempty"`
-		TermsOfService string `json:"termsOfService,omitempty"`
-		Version        string `json:"version"`
-	}
-
-	type ParameterObject struct {
-	}
-
-	type ResponseObject struct {
-		Description string `json:"description"`
-		// schema      string
-		// headers
-		// examples
-	}
-
-	type OperationObject struct {
-		Summary     string                    `json:"summary,omitempty"`
-		Description string                    `json:"description,omitempty"`
-		Parameters  []ParameterObject         `json:"parameters,omitempty"`
-		Responses   map[string]ResponseObject `json:"responses"`
-	}
-
-	type Swagger struct {
-		Swagger string `json:"swagger"`
-		Info    Info   `json:"info"`
-		// host
-		// basePath
-		Schemes  []string `json:"schemes"`  // ["https", "wss"]
-		Consumes []string `json:"consumes"` // ["application/json; charset=utf-8"]
-		Produces []string `json:"produces"` // ["application/json; charset=utf-8"]
-
-		// swagger.Paths["<path>"]
-		Paths map[string]map[string]*OperationObject `json:"paths"`
-	}
-
-	spec := Swagger{
-		Swagger: "2.0",
-		Info: Info{
-			Title:   "Featherhead - " + service.GetName(),
-			Version: "1",
-		},
-
-		Schemes:  []string{"https", "wss"},
-		Consumes: []string{"application/json; charset=utf-8"},
-		Produces: []string{"application/json; charset=utf-8"},
-
-		Paths: map[string]map[string]*OperationObject{},
-	}
-
-	for _, api := range apis {
-		method, pattern, ok := api.GetMethodAndPattern()
-		if !ok {
-			continue
-		}
-
-		pathItem := spec.Paths[pattern]
-		if pathItem == nil {
-			pathItem = make(map[string]*OperationObject)
-			spec.Paths[pattern] = pathItem
-		}
-
-		operation := pathItem[strings.ToLower(method)]
-		if operation == nil {
-			operation = &OperationObject{}
-			pathItem[strings.ToLower(method)] = operation
-		}
-
-		if operation.Responses == nil {
-			operation.Responses = make(map[string]ResponseObject)
-		}
-
-		operation.Description = strings.TrimSpace(g.gen.Comments(api.descIndexPath))
-		operation.Responses["200"] = ResponseObject{
-			Description: "Response on success",
-		}
-	}
-
-	data, err := json.Marshal(&spec)
-	if err != nil {
-		g.gen.Error(err)
-	}
-
-	g.gen.Response.File = append(g.gen.Response.File, &plugin.CodeGeneratorResponse_File{
-		Name:    proto.String(swaggerSpecFileName(*file.Name)),
-		Content: proto.String(string(data)),
-	})
-}
-
-func swaggerSpecFileName(name string) string {
-	ext := path.Ext(name)
-	if ext == ".proto" || ext == ".protodevel" {
-		name = name[0 : len(name)-len(ext)]
-	}
-	return name + ".swagger.json"
 }

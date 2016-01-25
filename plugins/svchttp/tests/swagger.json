@@ -1,0 +1,92 @@
+{
+  "swagger": "2.0",
+  "info": {
+    "title": "",
+    "version": "1"
+  },
+  "schemes": [
+    "https",
+    "wss"
+  ],
+  "consumes": [
+    "application/json; charset=utf-8"
+  ],
+  "produces": [
+    "application/json; charset=utf-8"
+  ],
+  "paths": {
+    "/greet": {
+      "post": {
+        "description": "Get a greeting using a Person",
+        "responses": {
+          "200": {
+            "description": "Response on success",
+            "schema": {
+              "properties": {
+                "text": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "tags": [
+          "TestService"
+        ]
+      }
+    },
+    "/list": {
+      "get": {
+        "description": "List all indexes",
+        "responses": {
+          "200": {
+            "description": "Response on success",
+            "schema": {
+              "properties": {
+                "index": {
+                  "type": "integer"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "tags": [
+          "TestService"
+        ]
+      }
+    },
+    "/person/{id}": {
+      "get": {
+        "description": "Fetch a person",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "type": "string",
+            "required": true,
+            "minItems": 1,
+            "maxItems": 1
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Response on success",
+            "schema": {
+              "properties": {
+                "name": {
+                  "type": "string"
+                }
+              },
+              "type": "object"
+            }
+          }
+        },
+        "tags": [
+          "TestService"
+        ]
+      }
+    }
+  }
+}
