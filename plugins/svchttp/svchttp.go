@@ -2,7 +2,6 @@ package svchttp
 
 import (
 	"fmt"
-	"os"
 	"strconv"
 	"strings"
 
@@ -82,7 +81,6 @@ func (g *svchttp) P(args ...interface{}) { g.gen.P(args...) }
 // Generate generates code for the services in the given file.
 func (g *svchttp) Generate(file *generator.FileDescriptor) {
 	for i, message := range file.Messages() {
-		fmt.Fprintf(os.Stderr, "MSG: %v\n", message.TypeName())
 		g.generateMessageSchema(file, message, i)
 	}
 

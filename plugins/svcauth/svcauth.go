@@ -2,7 +2,6 @@ package svcauth
 
 import (
 	"fmt"
-	"os"
 	"path"
 	"strings"
 
@@ -27,6 +26,8 @@ type svcauth struct {
 
 	imports    generator.PluginImports
 	contextPkg generator.Single
+
+	messages map[string]*generator.Descriptor
 }
 
 // Name returns the name of this plugin, "grpc".
@@ -42,6 +43,7 @@ var reservedClientName = map[string]bool{
 // Init initializes the plugin.
 func (g *svcauth) Init(gen *generator.Generator) {
 	g.gen = gen
+	g.messages = map[string]*generator.Descriptor{}
 }
 
 // Given a type name defined in a .proto, return its object.
@@ -61,6 +63,11 @@ func (g *svcauth) P(args ...interface{}) { g.gen.P(args...) }
 
 // Generate generates code for the services in the given file.
 func (g *svcauth) Generate(file *generator.FileDescriptor) {
+	for _, msg := range file.Messages() {
+		name := file.GetPackage() + "." + msg.GetName()
+		g.messages[name] = msg
+	}
+
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}
@@ -219,6 +226,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.P("return err")
 		}
 		g.P("}")
+		g.setMessage(inputType, authnInfo.Caller, "input", "caller", true)
 
 		if authzInfo != nil {
 			var methodName string
@@ -432,7 +440,8 @@ func (g *svcauth) lookupMessageType(inputType *generator.Descriptor, path string
 			}
 		}
 
-		partType = g.gen.ObjectNamed(field.GetTypeName()).(*generator.Descriptor)
+		typeName := strings.TrimPrefix(field.GetTypeName(), ".")
+		partType = g.messages[typeName]
 	}
 
 	panic("unreachable")
@@ -440,8 +449,9 @@ func (g *svcauth) lookupMessageType(inputType *generator.Descriptor, path string
 
 func (g *svcauth) getMessage(inputType *generator.Descriptor, path, input, output string, inputIsNullable bool) {
 	var (
-		checks []string
-		goPath string
+		checks     []string
+		goPath     string
+		isNullable = inputIsNullable
 	)
 
 	goPath = input
@@ -475,28 +485,75 @@ func (g *svcauth) getMessage(inputType *generator.Descriptor, path, input, outpu
 		goPath += "." + fieldGoName
 		if gogoproto.IsNullable(field) {
 			checks = append(checks, goPath+" != nil")
+			isNullable = true
+		} else {
+			isNullable = false
 		}
 
-		switch x := g.gen.ObjectNamed(field.GetTypeName()).(type) {
-		case *generator.Descriptor:
-			inputType = x
-		case *generator.ImportedDescriptor:
-			// f := g.gen.FileOf(x.File())
-			f := x.File()
-			fmt.Fprintf(os.Stderr, "x.TypeName    => %s\n", x.TypeName())
-			fmt.Fprintf(os.Stderr, "x.PackageName => %s\n", x.PackageName())
-			fmt.Fprintf(os.Stderr, "x.File        => %s\n", f.GetName())
-			panic("invalid")
-		default:
-			panic("invalid")
-		}
+		inputType = g.messages[strings.TrimPrefix(field.GetTypeName(), ".")]
 	}
 
 	if len(checks) > 0 {
 		g.P(`if `, strings.Join(checks, " && "), `{`)
-		g.P(output, ` = `, goPath)
+		if isNullable {
+			g.P(output, ` = `, goPath)
+		} else {
+			g.P(output, ` = &`, goPath)
+		}
 		g.P(`}`)
 	} else {
-		g.P(output, ` = `, goPath)
+		if isNullable {
+			g.P(output, ` = `, goPath)
+		} else {
+			g.P(output, ` = &`, goPath)
+		}
 	}
+}
+func (g *svcauth) setMessage(inputType *generator.Descriptor, path, input, output string, inputIsNullable bool) {
+	var (
+		goPath string
+	)
+
+	goPath = input
+	if inputIsNullable {
+		g.P(`if `, goPath, `== nil {`)
+		g.P(goPath, `= &`, g.gen.TypeName(inputType), `{}`)
+		g.P(`}`)
+	}
+
+	for path != "" {
+
+		// split path
+		part := path
+		idx := strings.IndexByte(path, '.')
+		if idx >= 0 {
+			part = path[:idx]
+			path = path[idx+1:]
+		} else {
+			path = ""
+		}
+
+		// Get Field
+		field := inputType.GetFieldDescriptor(part)
+		if field == nil {
+			g.gen.Fail("unknown field", part, "in message", inputType.GetName())
+		}
+		if !field.IsMessage() {
+			g.gen.Fail("expected a message")
+		}
+
+		// Append code
+		fieldGoName := g.gen.GetFieldName(inputType, field)
+		goPath += "." + fieldGoName
+
+		inputType = g.messages[strings.TrimPrefix(field.GetTypeName(), ".")]
+
+		if gogoproto.IsNullable(field) && path != "" {
+			g.P(`if `, goPath, `== nil {`)
+			g.P(goPath, `= &`, g.gen.TypeName(inputType), `{}`)
+			g.P(`}`)
+		}
+	}
+
+	g.P(goPath, ` = &`, output)
 }
