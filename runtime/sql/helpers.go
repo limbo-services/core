@@ -58,6 +58,24 @@ func (s *ScannerDescriptor) ID() string {
 	return s.MessageType + ":" + s.Name
 }
 
+func (m *ScannerDescriptor) LookupJoin(fieldName string) *JoinDescriptor {
+	for _, join := range m.Join {
+		if join.FieldName == fieldName {
+			return join
+		}
+	}
+	return nil
+}
+
+func (m *ScannerDescriptor) LookupColumn(fieldName string) *ColumnDescriptor {
+	for _, column := range m.Column {
+		if column.FieldName == fieldName {
+			return column
+		}
+	}
+	return nil
+}
+
 func (m *ModelDescriptor) LookupJoin(fieldName string) *JoinDescriptor {
 	for _, join := range m.Join {
 		if join.FieldName == fieldName {
@@ -78,6 +96,33 @@ func (m *ModelDescriptor) LookupColumn(fieldName string) *ColumnDescriptor {
 
 func (m *ModelDescriptor) LookupScanner(fieldName string) *ScannerDescriptor {
 	for _, column := range m.Scanner {
+		if column.Name == fieldName {
+			return column
+		}
+	}
+	return nil
+}
+
+func (m *ModelDescriptor) LookupDeepJoin(fieldName string) *JoinDescriptor {
+	for _, join := range m.DeepJoin {
+		if join.FieldName == fieldName {
+			return join
+		}
+	}
+	return nil
+}
+
+func (m *ModelDescriptor) LookupDeepColumn(fieldName string) *ColumnDescriptor {
+	for _, column := range m.DeepColumn {
+		if column.FieldName == fieldName {
+			return column
+		}
+	}
+	return nil
+}
+
+func (m *ModelDescriptor) LookupDeepScanner(fieldName string) *ScannerDescriptor {
+	for _, column := range m.DeepScanner {
 		if column.Name == fieldName {
 			return column
 		}

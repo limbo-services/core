@@ -94,6 +94,7 @@
     "xyz.featherhead.tests.FetchOptions": {
       "properties": {
         "id": {
+          "format": "int64",
           "type": "integer"
         }
       },
@@ -110,6 +111,7 @@
     "xyz.featherhead.tests.Item": {
       "properties": {
         "index": {
+          "format": "int64",
           "type": "integer"
         }
       },
@@ -118,6 +120,7 @@
     "xyz.featherhead.tests.ListOptions": {
       "properties": {
         "after": {
+          "format": "int64",
           "type": "integer"
         }
       },

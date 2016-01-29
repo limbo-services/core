@@ -8,6 +8,7 @@ import (
 	"strings"
 
 	"github.com/fd/featherhead/tools/runtime/sql"
+	"github.com/gogo/protobuf/gogoproto"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
@@ -491,10 +492,31 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 	}
 	g.P(`)`)
 	g.P(`if err!=nil { return err }`)
+	tmp := map[string]string{}
 	for i, column := range scanner.Column {
-		m := g.models[column.MessageType]
-		field := m.GetFieldDescriptor(lastField(column.FieldName))
-		var valid string
+		var (
+			m     = g.models[column.MessageType]
+			field = m.GetFieldDescriptor(lastField(column.FieldName))
+			valid string
+			dst   = "dst"
+		)
+
+		joinName := column.JoinedWith
+		for joinName != "" {
+			join := scanner.LookupJoin(joinName)
+			joinName = join.JoinedWith
+
+			if tmp[join.FieldName] != "" {
+				break
+			}
+
+			n := fmt.Sprintf("p%d", len(tmp)+1)
+			g.P(`var `, n, ` *`, g.typeName(join.ForeignMessageType))
+			tmp[join.FieldName] = n
+		}
+		if n := tmp[column.JoinedWith]; n != "" {
+			dst = n
+		}
 
 		switch field.GetType() {
 		case pb.FieldDescriptorProto_TYPE_MESSAGE,
@@ -504,35 +526,42 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 			valid = fmt.Sprintf(`b%d.Valid`, i)
 		}
 
+		fieldName := g.gen.GetFieldName(m, field)
+
 		g.P(`if `, valid, ` {`)
 		switch field.GetType() {
 		case pb.FieldDescriptorProto_TYPE_BOOL:
-			g.P(`b`, i, `.Value`)
+			g.P(dst, `.`, fieldName, ` = b`, i, `.Bool`)
 		case pb.FieldDescriptorProto_TYPE_DOUBLE:
-			g.P(`float32(b`, i, `.Value)`)
+			g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float)`)
 		case pb.FieldDescriptorProto_TYPE_FLOAT:
-			g.P(`float32(b`, i, `.Value)`)
+			g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float)`)
 		case pb.FieldDescriptorProto_TYPE_FIXED32,
 			pb.FieldDescriptorProto_TYPE_UINT32:
-			g.P(`uint32(b`, i, `.Value)`)
+			g.P(dst, `.`, fieldName, ` = uint32(b`, i, `.Int)`)
 		case pb.FieldDescriptorProto_TYPE_FIXED64,
 			pb.FieldDescriptorProto_TYPE_UINT64:
-			g.P(`uint64(b`, i, `.Value)`)
+			g.P(dst, `.`, fieldName, ` = uint64(b`, i, `.Int)`)
 		case pb.FieldDescriptorProto_TYPE_SFIXED32,
 			pb.FieldDescriptorProto_TYPE_INT32,
 			pb.FieldDescriptorProto_TYPE_SINT32:
-			g.P(`int32(b`, i, `.Value)`)
+			g.P(dst, `.`, fieldName, ` = int32(b`, i, `.Int)`)
 		case pb.FieldDescriptorProto_TYPE_SFIXED64,
 			pb.FieldDescriptorProto_TYPE_INT64,
 			pb.FieldDescriptorProto_TYPE_SINT64:
-			g.P(`int64(b`, i, `.Value)`)
+			g.P(dst, `.`, fieldName, ` = int64(b`, i, `.Int)`)
 		case pb.FieldDescriptorProto_TYPE_BYTES:
-			g.P(`b`, i, ``)
+			g.P(dst, `.`, fieldName, ` = b`, i, ``)
 		case pb.FieldDescriptorProto_TYPE_STRING:
-			g.P(`b`, i, `.Value`)
+			g.P(dst, `.`, fieldName, ` = b`, i, `.String`)
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
 			g.P(`err := m`, i, `.Unmarshal(b`, i, `)`)
 			g.P(`if err!=nil { return err }`)
+			if gogoproto.IsNullable(field) {
+				g.P(dst, `.`, fieldName, ` = &m`, i, ``)
+			} else {
+				g.P(dst, `.`, fieldName, ` = m`, i, ``)
+			}
 		}
 		g.P(`}`)
 	}
