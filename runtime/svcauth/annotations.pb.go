@@ -48,17 +48,17 @@ var E_Authz = &proto.ExtensionDesc{
 var E_DefaultAuthn = &proto.ExtensionDesc{
 	ExtendedType:  (*google_protobuf.ServiceOptions)(nil),
 	ExtensionType: (*AuthnRule)(nil),
-	Field:         58700,
+	Field:         58710,
 	Name:          "xyz.featherhead.api.default_authn",
-	Tag:           "bytes,58700,opt,name=default_authn",
+	Tag:           "bytes,58710,opt,name=default_authn",
 }
 
 var E_DefaultAuthz = &proto.ExtensionDesc{
 	ExtendedType:  (*google_protobuf.ServiceOptions)(nil),
 	ExtensionType: (*AuthzRule)(nil),
-	Field:         58701,
+	Field:         58711,
 	Name:          "xyz.featherhead.api.default_authz",
-	Tag:           "bytes,58701,opt,name=default_authz",
+	Tag:           "bytes,58711,opt,name=default_authz",
 }
 
 func init() {

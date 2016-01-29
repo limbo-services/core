@@ -3,6 +3,7 @@ package svcauth
 import (
 	"fmt"
 	"path"
+	"sort"
 	"strings"
 
 	"github.com/gogo/protobuf/gogoproto"
@@ -133,29 +134,16 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		}
 	}
 	g.P(``)
-	var seenCallerContextTypes = map[string]bool{}
-	for _, authMethod := range methods {
-		method, authzInfo := authMethod.method, authMethod.Authz
-		if authzInfo == nil {
-			continue
+	authzContexts := g.lookupAuthzContexts(methods)
+	for _, ctx := range authzContexts {
+		g.P(`// Scopes:`)
+		for _, scope := range ctx.Scopes {
+			g.P(`// - `, scope)
 		}
-
-		inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
-		var callerType, _ = g.lookupMessageType(inputType, authzInfo.Caller)
-
-		if authzInfo.Context != "" {
-			var contextType, _ = g.lookupMessageType(inputType, authzInfo.Context)
-			id := callerType + "/" + contextType
-			if !seenCallerContextTypes[id] {
-				seenCallerContextTypes[id] = true
-				g.P(`Authorize`, callerType, `For`, contextType, `(ctx `, g.contextPkg.Use(), `.Context, scopes []string, caller *`, callerType, `, context *`, contextType, `) error`)
-			}
+		if ctx.ContextType != "" {
+			g.P(`Authorize`, ctx.CallerType, `For`, ctx.ContextType, `(ctx `, g.contextPkg.Use(), `.Context, scope string, caller *`, ctx.CallerType, `, context *`, ctx.ContextType, `) error`)
 		} else {
-			id := callerType
-			if !seenCallerContextTypes[id] {
-				seenCallerContextTypes[id] = true
-				g.P(`Authorize`, callerType, `(ctx `, g.contextPkg.Use(), `.Context, scopes []string, caller *`, callerType, `) error`)
-			}
+			g.P(`Authorize`, ctx.CallerType, `(ctx `, g.contextPkg.Use(), `.Context, scope string, caller *`, ctx.CallerType, `) error`)
 		}
 	}
 	g.P(`}`)
@@ -182,10 +170,10 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 			authMethod.authnRuleID = id
 		}
 
-		if authzInfo != nil && len(authzInfo.Scopes) > 0 {
-			rule = fmt.Sprintf("%#v", authzInfo.Scopes)
+		if authzInfo != nil {
+			rule = fmt.Sprintf("%#v", authzInfo.Scope)
 		} else {
-			rule = "[]string{}"
+			rule = `""`
 		}
 		if id, found := rules[rule]; !found {
 			id = len(rules) + 1
@@ -556,4 +544,66 @@ func (g *svcauth) setMessage(inputType *generator.Descriptor, path, input, outpu
 	}
 
 	g.P(goPath, ` = &`, output)
+}
+
+type authzContext struct {
+	CallerType  string
+	ContextType string
+	Scopes      []string
+}
+
+func (g *svcauth) lookupAuthzContexts(methods []*authMethod) []*authzContext {
+	var m = map[string]*authzContext{}
+
+	for _, authMethod := range methods {
+		var (
+			inputType   *generator.Descriptor
+			callerType  string
+			contextType string
+			id          string
+		)
+
+		method, authzInfo := authMethod.method, authMethod.Authz
+		if authzInfo == nil {
+			continue
+		}
+
+		inputType, _ = g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
+		callerType, _ = g.lookupMessageType(inputType, authzInfo.Caller)
+		id = callerType
+
+		if authzInfo.Context != "" {
+			contextType, _ = g.lookupMessageType(inputType, authzInfo.Context)
+			id = callerType + "/" + contextType
+		}
+
+		ctx := m[id]
+
+		if ctx == nil {
+			ctx = &authzContext{
+				CallerType:  callerType,
+				ContextType: contextType,
+			}
+			m[id] = ctx
+		}
+
+		ctx.Scopes = append(ctx.Scopes, authzInfo.Scope)
+	}
+
+	var l = make([]*authzContext, 0, len(m))
+	for _, ctx := range m {
+		l = append(l, ctx)
+		sort.Strings(ctx.Scopes)
+		tmp := ctx.Scopes
+		ctx.Scopes = ctx.Scopes[:0]
+		lastScope := ""
+		for _, scope := range tmp {
+			if scope != lastScope {
+				lastScope = scope
+				ctx.Scopes = append(ctx.Scopes, scope)
+			}
+		}
+	}
+
+	return l
 }

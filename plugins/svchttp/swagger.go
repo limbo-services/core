@@ -34,9 +34,6 @@ type SwaggerParameterObject struct {
 type SwaggerResponseObject struct {
 	Description string      `json:"description"`
 	Schema      interface{} `json:"schema"`
-	// schema      string
-	// headers
-	// examples
 }
 
 type SwaggerOperationObject struct {
@@ -103,6 +100,8 @@ func (g *svchttp) generateSwaggerSpec(file *generator.FileDescriptor, service *p
 		if !ok {
 			continue
 		}
+
+		pattern = strings.Replace(pattern, ".", "_", -1)
 
 		query := ""
 		if idx := strings.IndexByte(pattern, '?'); idx >= 0 {

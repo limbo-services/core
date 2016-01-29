@@ -13,6 +13,6 @@ extend google.protobuf.MethodOptions {
 }
 
 extend google.protobuf.ServiceOptions {
-  xyz.featherhead.api.AuthnRule default_authn = 58700;
-  xyz.featherhead.api.AuthzRule default_authz = 58701;
+  xyz.featherhead.api.AuthnRule default_authn = 58710;
+  xyz.featherhead.api.AuthzRule default_authz = 58711;
 }

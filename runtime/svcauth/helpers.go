@@ -71,25 +71,9 @@ func (base *AuthzRule) Inherit(r *AuthzRule) *AuthzRule {
 	if r.Context == "" {
 		r.Context = base.Context
 	}
-
-	r.Scopes = append(base.Scopes, r.Scopes...)
-	m := make(map[string]bool, len(r.Scopes))
-	for _, s := range r.Scopes {
-		if strings.HasPrefix(s, "-") {
-			m[s[1:]] = false
-			continue
-		}
-		if strings.HasPrefix(s, "+") {
-			m[s[1:]] = true
-			continue
-		}
-		m[s] = true
+	if r.Scope == "" {
+		r.Scope = base.Scope
 	}
-	r.Scopes = r.Scopes[:0]
-	for s := range m {
-		r.Scopes = append(r.Scopes, s)
-	}
-	sort.Strings(r.Scopes)
 
 	return r
 }

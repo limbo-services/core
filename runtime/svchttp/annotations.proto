@@ -1,4 +1,4 @@
-syntax = "proto3";
+syntax = "proto2";
 
 package xyz.featherhead.api;
 option go_package = "svchttp";
@@ -7,5 +7,10 @@ import "github.com/fd/featherhead/tools/runtime/svchttp/http_rule.proto";
 import "google/protobuf/descriptor.proto";
 
 extend google.protobuf.MethodOptions {
-  xyz.featherhead.api.HttpRule http = 58702;
+  optional xyz.featherhead.api.HttpRule http = 58800;
+}
+
+extend google.protobuf.FieldOptions {
+  optional bool hideInSwagger = 58810;
+  optional string format = 58811;
 }

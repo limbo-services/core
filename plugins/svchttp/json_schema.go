@@ -4,8 +4,11 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
+
+	. "github.com/fd/featherhead/tools/runtime/svchttp"
 )
 
 func messageToSchema(gen *generator.Generator, desc *generator.Descriptor) interface{} {
@@ -13,7 +16,9 @@ func messageToSchema(gen *generator.Generator, desc *generator.Descriptor) inter
 	properties := make(map[string]interface{})
 	for _, field := range desc.GetField() {
 		// required/optional/repeated
-		properties[field.GetName()] = fieldToSchema(gen, field)
+		if f := fieldToSchema(gen, field); f != nil {
+			properties[field.GetName()] = f
+		}
 	}
 
 	schema := map[string]interface{}{
@@ -25,6 +30,14 @@ func messageToSchema(gen *generator.Generator, desc *generator.Descriptor) inter
 }
 
 func fieldToSchema(gen *generator.Generator, field *pb.FieldDescriptorProto) interface{} {
+	if field.Options != nil {
+		v, _ := proto.GetExtension(field.Options, E_HideInSwagger)
+		hidePtr, _ := v.(*bool)
+		if hidePtr != nil && *hidePtr == true {
+			return nil
+		}
+	}
+
 	switch field.GetType() {
 
 	case pb.FieldDescriptorProto_TYPE_BOOL:
@@ -32,30 +45,50 @@ func fieldToSchema(gen *generator.Generator, field *pb.FieldDescriptorProto) int
 			"type": "boolean",
 		}
 
-	case pb.FieldDescriptorProto_TYPE_DOUBLE,
-		pb.FieldDescriptorProto_TYPE_FLOAT:
+	case pb.FieldDescriptorProto_TYPE_FLOAT:
 		return map[string]interface{}{
-			"type": "number",
+			"type":   "number",
+			"format": "float",
 		}
 
-	case pb.FieldDescriptorProto_TYPE_INT32,
-		pb.FieldDescriptorProto_TYPE_INT64,
-		pb.FieldDescriptorProto_TYPE_FIXED32,
+	case pb.FieldDescriptorProto_TYPE_DOUBLE:
+		return map[string]interface{}{
+			"type":   "number",
+			"format": "double",
+		}
+
+	case pb.FieldDescriptorProto_TYPE_FIXED32,
 		pb.FieldDescriptorProto_TYPE_FIXED64,
-		pb.FieldDescriptorProto_TYPE_SFIXED32,
-		pb.FieldDescriptorProto_TYPE_SFIXED64,
-		pb.FieldDescriptorProto_TYPE_SINT32,
-		pb.FieldDescriptorProto_TYPE_SINT64,
 		pb.FieldDescriptorProto_TYPE_UINT32,
 		pb.FieldDescriptorProto_TYPE_UINT64:
 		return map[string]interface{}{
 			"type": "integer",
 		}
 
-	case pb.FieldDescriptorProto_TYPE_STRING:
+	case pb.FieldDescriptorProto_TYPE_INT32,
+		pb.FieldDescriptorProto_TYPE_SFIXED32,
+		pb.FieldDescriptorProto_TYPE_SINT32:
 		return map[string]interface{}{
+			"type":   "integer",
+			"format": "int32",
+		}
+
+	case pb.FieldDescriptorProto_TYPE_INT64,
+		pb.FieldDescriptorProto_TYPE_SFIXED64,
+		pb.FieldDescriptorProto_TYPE_SINT64:
+		return map[string]interface{}{
+			"type":   "integer",
+			"format": "int64",
+		}
+
+	case pb.FieldDescriptorProto_TYPE_STRING:
+		s := map[string]interface{}{
 			"type": "string",
 		}
+		if f := GetFormat(field); f != "" {
+			s["format"] = f
+		}
+		return s
 
 	case pb.FieldDescriptorProto_TYPE_BYTES:
 		return map[string]interface{}{

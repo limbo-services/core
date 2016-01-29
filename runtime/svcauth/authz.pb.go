@@ -25,8 +25,8 @@ type AuthzRule struct {
 	Caller string `protobuf:"bytes,1,opt,name=caller,proto3" json:"caller,omitempty"`
 	// Path to context identifier.
 	Context string `protobuf:"bytes,2,opt,name=context,proto3" json:"context,omitempty"`
-	// Scopes that give permission to call the RPC
-	Scopes []string `protobuf:"bytes,3,rep,name=scope" json:"scope,omitempty"`
+	// Scope that give permission to call the RPC
+	Scope string `protobuf:"bytes,3,opt,name=scope,proto3" json:"scope,omitempty"`
 }
 
 func (m *AuthzRule) Reset()         { *m = AuthzRule{} }
@@ -44,7 +44,7 @@ func (this *AuthzRule) GoString() string {
 	s = append(s, "&svcauth.AuthzRule{")
 	s = append(s, "Caller: "+fmt.Sprintf("%#v", this.Caller)+",\n")
 	s = append(s, "Context: "+fmt.Sprintf("%#v", this.Context)+",\n")
-	s = append(s, "Scopes: "+fmt.Sprintf("%#v", this.Scopes)+",\n")
+	s = append(s, "Scope: "+fmt.Sprintf("%#v", this.Scope)+",\n")
 	s = append(s, "}")
 	return strings.Join(s, "")
 }

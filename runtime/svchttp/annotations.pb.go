@@ -27,11 +27,29 @@ var _ = math.Inf
 var E_Http = &proto.ExtensionDesc{
 	ExtendedType:  (*google_protobuf.MethodOptions)(nil),
 	ExtensionType: (*HttpRule)(nil),
-	Field:         58702,
+	Field:         58800,
 	Name:          "xyz.featherhead.api.http",
-	Tag:           "bytes,58702,opt,name=http",
+	Tag:           "bytes,58800,opt,name=http",
+}
+
+var E_HideInSwagger = &proto.ExtensionDesc{
+	ExtendedType:  (*google_protobuf.FieldOptions)(nil),
+	ExtensionType: (*bool)(nil),
+	Field:         58810,
+	Name:          "xyz.featherhead.api.hideInSwagger",
+	Tag:           "varint,58810,opt,name=hideInSwagger",
+}
+
+var E_Format = &proto.ExtensionDesc{
+	ExtendedType:  (*google_protobuf.FieldOptions)(nil),
+	ExtensionType: (*string)(nil),
+	Field:         58811,
+	Name:          "xyz.featherhead.api.format",
+	Tag:           "bytes,58811,opt,name=format",
 }
 
 func init() {
 	proto.RegisterExtension(E_Http)
+	proto.RegisterExtension(E_HideInSwagger)
+	proto.RegisterExtension(E_Format)
 }
