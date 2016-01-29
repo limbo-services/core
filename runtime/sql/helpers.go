@@ -6,6 +6,10 @@ import (
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 )
 
+func IsGoSQLValuer(msg *generator.Descriptor) bool {
+	return proto.GetBoolExtension(msg.Options, E_Gosqlvaluer, false)
+}
+
 func GetModel(msg *generator.Descriptor) *ModelDescriptor {
 	if msg.Options != nil {
 		v, _ := proto.GetExtension(msg.Options, E_Model)

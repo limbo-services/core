@@ -35,6 +35,14 @@ var E_Model = &proto.ExtensionDesc{
 	Tag:           "bytes,58900,opt,name=model",
 }
 
+var E_Gosqlvaluer = &proto.ExtensionDesc{
+	ExtendedType:  (*google_protobuf.MessageOptions)(nil),
+	ExtensionType: (*bool)(nil),
+	Field:         58901,
+	Name:          "xyz.featherhead.api.gosqlvaluer",
+	Tag:           "varint,58901,opt,name=gosqlvaluer",
+}
+
 var E_Column = &proto.ExtensionDesc{
 	ExtendedType:  (*google_protobuf.FieldOptions)(nil),
 	ExtensionType: (*ColumnDescriptor)(nil),
@@ -53,6 +61,7 @@ var E_Join = &proto.ExtensionDesc{
 
 func init() {
 	proto.RegisterExtension(E_Model)
+	proto.RegisterExtension(E_Gosqlvaluer)
 	proto.RegisterExtension(E_Column)
 	proto.RegisterExtension(E_Join)
 }

@@ -43,4 +43,5 @@ message JoinDescriptor {
   string message_type = 5;
   string field_name = 6;
   string joined_with = 7;
+  string table = 8;
 }

@@ -118,6 +118,7 @@ type JoinDescriptor struct {
 	MessageType        string `protobuf:"bytes,5,opt,name=message_type,proto3" json:"message_type,omitempty"`
 	FieldName          string `protobuf:"bytes,6,opt,name=field_name,proto3" json:"field_name,omitempty"`
 	JoinedWith         string `protobuf:"bytes,7,opt,name=joined_with,proto3" json:"joined_with,omitempty"`
+	Table              string `protobuf:"bytes,8,opt,name=table,proto3" json:"table,omitempty"`
 }
 
 func (m *JoinDescriptor) Reset()         { *m = JoinDescriptor{} }

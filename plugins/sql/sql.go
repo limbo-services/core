@@ -1,10 +1,12 @@
 package gensql
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"os"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/fd/featherhead/tools/runtime/sql"
@@ -84,6 +86,7 @@ func (g *gensql) Generate(file *generator.FileDescriptor) {
 	}
 
 	for _, msg := range models {
+		g.generateStmt(file, msg)
 		g.generateScanners(file, msg)
 	}
 
@@ -202,6 +205,8 @@ func (g *gensql) populateMessageDeep(msg *generator.Descriptor, stack []string) 
 		g.populateMessageDeep(fmsg, stack)
 
 		fmodel := sql.GetModel(fmsg)
+
+		join.Table = fmodel.Table
 
 		for _, fjoin := range fmodel.DeepJoin {
 			fjoin = proto.Clone(fjoin).(*sql.JoinDescriptor)
@@ -352,7 +357,6 @@ func (g *gensql) populateScanner(msg *generator.Descriptor, scanner *sql.Scanner
 
 	queue = ops
 	ops = nil
-	fmt.Fprintf(os.Stderr, "%q => %q\n", scanner.Name, queue)
 	for _, op := range queue {
 		var (
 			found    bool
@@ -433,6 +437,9 @@ func (g *gensql) populateScanner(msg *generator.Descriptor, scanner *sql.Scanner
 			g.gen.Fail("unknown join", joinName)
 		}
 	}
+
+	sort.Sort(sql.SortedColumnDescriptors(scanner.Column))
+	sort.Sort(sql.SortedJoinDescriptors(scanner.Join))
 }
 
 func (g *gensql) generateScanners(file *generator.FileDescriptor, message *generator.Descriptor) {
@@ -442,12 +449,61 @@ func (g *gensql) generateScanners(file *generator.FileDescriptor, message *gener
 	}
 }
 
+func (g *gensql) generateQueryPrefix(message *generator.Descriptor, scanner *sql.ScannerDescriptor) string {
+	var (
+		buf   bytes.Buffer
+		model = sql.GetModel(message)
+	)
+
+	buf.WriteString("SELECT")
+
+	for i, column := range scanner.Column {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		buf.WriteByte(' ')
+		if column.JoinedWith == "" {
+			buf.WriteString(model.Table)
+			buf.WriteByte('.')
+		}
+		buf.WriteString(column.Name)
+	}
+
+	buf.WriteString(" FROM ")
+	buf.WriteString(model.Table)
+
+	for _, join := range scanner.Join {
+		buf.WriteString(" LEFT JOIN ")
+		buf.WriteString(join.Table)
+		buf.WriteString(" AS ")
+		buf.WriteString(join.Name)
+		buf.WriteString(" ON ")
+		buf.WriteString(join.Name)
+		buf.WriteByte('.')
+		buf.WriteString(join.ForeignKey)
+		buf.WriteString(" = ")
+		if join.JoinedWith != "" {
+			buf.WriteString(scanner.LookupJoin(join.JoinedWith).Name)
+		} else {
+			buf.WriteString(model.Table)
+		}
+		buf.WriteByte('.')
+		buf.WriteString(join.Key)
+	}
+
+	return buf.String()
+}
+
 func (g *gensql) generateScanner(file *generator.FileDescriptor, message *generator.Descriptor, scanner *sql.ScannerDescriptor) {
 	scannerFuncName := `scan_` + message.GetName()
 	if scanner.Name != "" {
 		scannerFuncName += `_` + scanner.Name
 	}
 
+	joins := map[string]int{}
+
+	g.P(``)
+	g.P(`const `, scannerFuncName, `SQL = `, strconv.Quote(g.generateQueryPrefix(message, scanner)))
 	g.P(`func `, scannerFuncName, `(scanFunc func(...interface{})error, dst *`, message.Name, `) error {`)
 	g.P(`var (`)
 	for i, column := range scanner.Column {
@@ -479,11 +535,22 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		case pb.FieldDescriptorProto_TYPE_STRING:
 			g.P(`b`, i, ` `, g.sqlPkg.Use(), `.NullString`)
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			g.P(`b`, i, ` []byte`)
-			g.P(`m`, i, ` `, g.typeName(field.GetTypeName()))
+			if sql.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+				g.P(`b`, i, ` Null`, g.typeName(field.GetTypeName()))
+			} else {
+				g.P(`b`, i, ` []byte`)
+				g.P(`m`, i, ` `, g.typeName(field.GetTypeName()))
+			}
 		default:
 			panic("unsupoorted type: " + field.GetType().String())
 		}
+	}
+	for i, join := range scanner.Join {
+		m := g.models[join.MessageType]
+		field := m.GetFieldDescriptor(lastField(join.FieldName))
+		joins[join.FieldName] = i
+		g.P(`j`, i, ` `, g.typeName(field.GetTypeName()))
+		g.P(`j`, i, `Valid bool`)
 	}
 	g.P(`)`)
 	g.P(`err := scanFunc(`)
@@ -492,7 +559,6 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 	}
 	g.P(`)`)
 	g.P(`if err!=nil { return err }`)
-	tmp := map[string]string{}
 	for i, column := range scanner.Column {
 		var (
 			m     = g.models[column.MessageType]
@@ -501,26 +567,18 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 			dst   = "dst"
 		)
 
-		joinName := column.JoinedWith
-		for joinName != "" {
-			join := scanner.LookupJoin(joinName)
-			joinName = join.JoinedWith
-
-			if tmp[join.FieldName] != "" {
-				break
-			}
-
-			n := fmt.Sprintf("p%d", len(tmp)+1)
-			g.P(`var `, n, ` *`, g.typeName(join.ForeignMessageType))
-			tmp[join.FieldName] = n
-		}
-		if n := tmp[column.JoinedWith]; n != "" {
-			dst = n
+		if column.JoinedWith != "" {
+			dst = fmt.Sprintf("j%d", joins[column.JoinedWith])
 		}
 
 		switch field.GetType() {
-		case pb.FieldDescriptorProto_TYPE_MESSAGE,
-			pb.FieldDescriptorProto_TYPE_BYTES:
+		case pb.FieldDescriptorProto_TYPE_MESSAGE:
+			if sql.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+				valid = fmt.Sprintf(`b%d.Valid`, i)
+			} else {
+				valid = fmt.Sprintf(`b%d != nil`, i)
+			}
+		case pb.FieldDescriptorProto_TYPE_BYTES:
 			valid = fmt.Sprintf(`b%d != nil`, i)
 		default:
 			valid = fmt.Sprintf(`b%d.Valid`, i)
@@ -529,6 +587,9 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		fieldName := g.gen.GetFieldName(m, field)
 
 		g.P(`if `, valid, ` {`)
+		if column.JoinedWith != "" {
+			g.P(dst, `Valid = true`)
+		}
 		switch field.GetType() {
 		case pb.FieldDescriptorProto_TYPE_BOOL:
 			g.P(dst, `.`, fieldName, ` = b`, i, `.Bool`)
@@ -555,18 +616,159 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		case pb.FieldDescriptorProto_TYPE_STRING:
 			g.P(dst, `.`, fieldName, ` = b`, i, `.String`)
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			g.P(`err := m`, i, `.Unmarshal(b`, i, `)`)
-			g.P(`if err!=nil { return err }`)
-			if gogoproto.IsNullable(field) {
-				g.P(dst, `.`, fieldName, ` = &m`, i, ``)
+			if sql.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+				if gogoproto.IsNullable(field) {
+					g.P(dst, `.`, fieldName, ` = &b`, i, `.`, g.typeName(field.GetTypeName()))
+				} else {
+					g.P(dst, `.`, fieldName, ` = b`, i, ``)
+				}
 			} else {
-				g.P(dst, `.`, fieldName, ` = m`, i, ``)
+				g.P(`err := m`, i, `.Unmarshal(b`, i, `)`)
+				g.P(`if err!=nil { return err }`)
+				if gogoproto.IsNullable(field) {
+					g.P(dst, `.`, fieldName, ` = &m`, i, ``)
+				} else {
+					g.P(dst, `.`, fieldName, ` = m`, i, ``)
+				}
 			}
 		}
 		g.P(`}`)
 	}
+	for i := len(scanner.Join) - 1; i >= 0; i-- {
+		var (
+			join  = scanner.Join[i]
+			m     = g.models[join.MessageType]
+			field = m.GetFieldDescriptor(lastField(join.FieldName))
+			dst   = "dst"
+		)
+
+		if join.JoinedWith != "" {
+			dst = fmt.Sprintf("j%d", joins[join.JoinedWith])
+		}
+
+		fieldName := g.gen.GetFieldName(m, field)
+
+		g.P(`if j`, i, `Valid {`)
+		if gogoproto.IsNullable(field) {
+			g.P(dst, `.`, fieldName, ` = &j`, i, ``)
+		} else {
+			g.P(dst, `.`, fieldName, ` = j`, i, ``)
+		}
+		g.P(`}`)
+	}
+	g.P(`return nil`)
 	g.P(`}`)
 	g.P(``)
+}
+
+func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator.Descriptor) {
+	model := sql.GetModel(message)
+
+	g.P(`type `, message.Name, `StmtBuilder interface {`)
+	g.P(`Prepare(scanner string, query string) `, message.Name, `Stmt`)
+	g.P(`Err() error`)
+	g.P(`}`)
+
+	g.P(`type `, message.Name, `Stmt interface {`)
+	g.P(`QueryRow(args ... interface{}) (`, message.Name, `Row)`)
+	g.P(`Query(args ... interface{}) (`, message.Name, `Rows, error)`)
+	g.P(`SelectSlice(dst []*`, message.Name, `, args ... interface{}) ([]*`, message.Name, `, error)`)
+	g.P(`}`)
+
+	g.P(`type `, message.Name, `Row interface {`)
+	g.P(`Scan(out *`, message.Name, `)  error`)
+	g.P(`}`)
+
+	g.P(`type `, message.Name, `Rows interface {`)
+	g.P(`Close() error`)
+	g.P(`Next() bool`)
+	g.P(`Err() error`)
+	g.P(`Scan(out *`, message.Name, `)  error`)
+	g.P(`}`)
+
+	g.P(`type `, unexport(*message.Name), `StmtBuilder struct {`)
+	g.P(`db *`, g.sqlPkg.Use(), `.DB`)
+	g.P(`err error`)
+	g.P(`}`)
+
+	g.P(`type `, unexport(*message.Name), `Stmt struct {`)
+	g.P(`stmt *`, g.sqlPkg.Use(), `.Stmt`)
+	g.P(`scanner func(func(...interface{}) error, *`, message.Name, `) error`)
+	g.P(`}`)
+
+	g.P(`type `, unexport(*message.Name), `Row struct {`)
+	g.P(`row *`, g.sqlPkg.Use(), `.Row`)
+	g.P(`scanner func(func(...interface{}) error, *`, message.Name, `) error`)
+	g.P(`}`)
+
+	g.P(`type `, unexport(*message.Name), `Rows struct {`)
+	g.P(`*`, g.sqlPkg.Use(), `.Rows`)
+	g.P(`scanner func(func(...interface{}) error, *`, message.Name, `) error`)
+	g.P(`}`)
+
+	g.P(`func New`, message.Name, `StmtBuilder(db *`, g.sqlPkg.Use(), `.DB) `, message.Name, `StmtBuilder {`)
+	g.P(`return &`, unexport(*message.Name), `StmtBuilder{db: db}`)
+	g.P(`}`)
+
+	g.P(`func (b *`, unexport(*message.Name), `StmtBuilder) Prepare(scanner string, query string) (`, message.Name, `Stmt) {`)
+	g.P(`if b.err != nil { return nil }`)
+	g.P(`var scannerFunc func(func(...interface{}) error, *`, message.Name, `) error`)
+	g.P(`switch scanner {`)
+	for _, scanner := range model.Scanner {
+		scannerFuncName := `scan_` + message.GetName()
+		if scanner.Name != "" {
+			scannerFuncName += `_` + scanner.Name
+		}
+
+		g.P(`case `, strconv.Quote(scanner.Name), `:`)
+		g.P(`query = `, scannerFuncName, `SQL + " " + query`)
+		g.P(`scannerFunc = `, scannerFuncName)
+	}
+	g.P(`default:`)
+	g.P(`if b.err == nil { b.err = fmt.Errorf("unknown scanner: %s", scanner) }`)
+	g.P(`}`)
+	g.P(`stmt, err := b.db.Prepare(query)`)
+	g.P(`if err != nil { if b.err == nil { b.err = err } }`)
+	g.P(`return &`, unexport(*message.Name), `Stmt{stmt: stmt, scanner: scannerFunc}`)
+	g.P(`}`)
+
+	g.P(`func (b *`, unexport(*message.Name), `StmtBuilder) Err() (error) {`)
+	g.P(`return b.err`)
+	g.P(`}`)
+
+	g.P(`func (s *`, unexport(*message.Name), `Stmt) QueryRow(args ... interface{}) (`, message.Name, `Row) {`)
+	g.P(`row := s.stmt.QueryRow(args...)`)
+	g.P(`return &`, unexport(*message.Name), `Row{row: row, scanner: s.scanner}`)
+	g.P(`}`)
+
+	g.P(`func (s *`, unexport(*message.Name), `Stmt) Query(args ... interface{}) (`, message.Name, `Rows, error) {`)
+	g.P(`rows, err := s.stmt.Query(args...)`)
+	g.P(`if err != nil { return nil, err }`)
+	g.P(`return &`, unexport(*message.Name), `Rows{Rows: rows, scanner: s.scanner}, nil`)
+	g.P(`}`)
+
+	g.P(`func (s *`, unexport(*message.Name), `Stmt) SelectSlice(dst []*`, message.Name, `, args ... interface{}) ([]*`, message.Name, `, error) {`)
+	g.P(`rows, err := s.Query(args...)`)
+	g.P(`if err != nil { return nil, err }`)
+	g.P(`defer rows.Close()`)
+	g.P(`for rows.Next() {`)
+	g.P(`var x = &`, message.Name, `{}`)
+	g.P(`err := rows.Scan(x)`)
+	g.P(`if err != nil { return nil, err }`)
+	g.P(`dst = append(dst, x)`)
+	g.P(`}`)
+	g.P(`err = rows.Err()`)
+	g.P(`if err != nil { return nil, err }`)
+	g.P(`return dst, nil`)
+	g.P(`}`)
+
+	g.P(`func (r *`, unexport(*message.Name), `Row) Scan(out *`, message.Name, `) error {`)
+	g.P(`return r.scanner(r.row.Scan, out)`)
+	g.P(`}`)
+
+	g.P(`func (r *`, unexport(*message.Name), `Rows) Scan(out *`, message.Name, `) error {`)
+	g.P(`return r.scanner(r.Rows.Scan, out)`)
+	g.P(`}`)
 }
 
 func lastField(s string) string {
