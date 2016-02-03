@@ -1,0 +1,164 @@
+--- ./runtime/google/protobuf/_timestamp_before.pb.go	2016-02-03 13:28:58.000000000 +0100
++++ ./runtime/google/protobuf/_timestamp_after.pb.go	2016-02-03 15:46:36.000000000 +0100
+@@ -11,32 +11,26 @@
+ 	It has these top-level messages:
+ 		Timestamp
+ */
+ package protobuf
+ 
+-import proto "github.com/gogo/protobuf/proto"
++import (
++	"time"
++
++	proto "github.com/gogo/protobuf/proto"
++)
+ import fmt "fmt"
+ import math "math"
+ 
+ import io "io"
+ 
+ // Reference imports to suppress errors if they are not otherwise used.
+ var _ = proto.Marshal
+ var _ = fmt.Errorf
+ var _ = math.Inf
+ 
+-type Timestamp struct {
+-	// Represents seconds of UTC time since Unix epoch
+-	// 1970-01-01T00:00:00Z. Must be from from 0001-01-01T00:00:00Z to
+-	// 9999-12-31T23:59:59Z inclusive.
+-	Seconds int64 `protobuf:"varint,1,opt,name=seconds,proto3" json:"seconds,omitempty"`
+-	// Non-negative fractions of a second at nanosecond resolution. Negative
+-	// second values with fractions must still have non-negative nanos values
+-	// that count forward in time. Must be from 0 to 999,999,999
+-	// inclusive.
+-	Nanos int32 `protobuf:"varint,2,opt,name=nanos,proto3" json:"nanos,omitempty"`
+-}
++type Timestamp time.Time
+ 
+ func (m *Timestamp) Reset()         { *m = Timestamp{} }
+ func (m *Timestamp) String() string { return proto.CompactTextString(m) }
+ func (*Timestamp) ProtoMessage()    {}
+ 
+@@ -52,23 +46,24 @@
+ 	}
+ 	return data[:n], nil
+ }
+ 
+ func (m *Timestamp) MarshalTo(data []byte) (int, error) {
++	mSeconds, mNanos := m.extract()
+ 	var i int
+ 	_ = i
+ 	var l int
+ 	_ = l
+-	if m.Seconds != 0 {
++	if mSeconds != 0 {
+ 		data[i] = 0x8
+ 		i++
+-		i = encodeVarintTimestamp(data, i, uint64(m.Seconds))
++		i = encodeVarintTimestamp(data, i, uint64(mSeconds))
+ 	}
+-	if m.Nanos != 0 {
++	if mNanos != 0 {
+ 		data[i] = 0x10
+ 		i++
+-		i = encodeVarintTimestamp(data, i, uint64(m.Nanos))
++		i = encodeVarintTimestamp(data, i, uint64(mNanos))
+ 	}
+ 	return i, nil
+ }
+ 
+ func encodeFixed64Timestamp(data []byte, offset int, v uint64) int {
+@@ -97,17 +92,18 @@
+ 	}
+ 	data[offset] = uint8(v)
+ 	return offset + 1
+ }
+ func (m *Timestamp) Size() (n int) {
++	mSeconds, mNanos := m.extract()
+ 	var l int
+ 	_ = l
+-	if m.Seconds != 0 {
+-		n += 1 + sovTimestamp(uint64(m.Seconds))
++	if mSeconds != 0 {
++		n += 1 + sovTimestamp(uint64(mSeconds))
+ 	}
+-	if m.Nanos != 0 {
+-		n += 1 + sovTimestamp(uint64(m.Nanos))
++	if mNanos != 0 {
++		n += 1 + sovTimestamp(uint64(mNanos))
+ 	}
+ 	return n
+ }
+ 
+ func sovTimestamp(x uint64) (n int) {
+@@ -122,10 +118,12 @@
+ }
+ func sozTimestamp(x uint64) (n int) {
+ 	return sovTimestamp(uint64((x << 1) ^ uint64((int64(x) >> 63))))
+ }
+ func (m *Timestamp) Unmarshal(data []byte) error {
++	var mSeconds int64
++	var mNanos int32
+ 	l := len(data)
+ 	iNdEx := 0
+ 	for iNdEx < l {
+ 		preIndex := iNdEx
+ 		var wire uint64
+@@ -154,40 +152,40 @@
+ 		switch fieldNum {
+ 		case 1:
+ 			if wireType != 0 {
+ 				return fmt.Errorf("proto: wrong wireType = %d for field Seconds", wireType)
+ 			}
+-			m.Seconds = 0
++			mSeconds = 0
+ 			for shift := uint(0); ; shift += 7 {
+ 				if shift >= 64 {
+ 					return ErrIntOverflowTimestamp
+ 				}
+ 				if iNdEx >= l {
+ 					return io.ErrUnexpectedEOF
+ 				}
+ 				b := data[iNdEx]
+ 				iNdEx++
+-				m.Seconds |= (int64(b) & 0x7F) << shift
++				mSeconds |= (int64(b) & 0x7F) << shift
+ 				if b < 0x80 {
+ 					break
+ 				}
+ 			}
+ 		case 2:
+ 			if wireType != 0 {
+ 				return fmt.Errorf("proto: wrong wireType = %d for field Nanos", wireType)
+ 			}
+-			m.Nanos = 0
++			mNanos = 0
+ 			for shift := uint(0); ; shift += 7 {
+ 				if shift >= 64 {
+ 					return ErrIntOverflowTimestamp
+ 				}
+ 				if iNdEx >= l {
+ 					return io.ErrUnexpectedEOF
+ 				}
+ 				b := data[iNdEx]
+ 				iNdEx++
+-				m.Nanos |= (int32(b) & 0x7F) << shift
++				mNanos |= (int32(b) & 0x7F) << shift
+ 				if b < 0x80 {
+ 					break
+ 				}
+ 			}
+ 		default:
+@@ -207,10 +205,12 @@
+ 	}
+ 
+ 	if iNdEx > l {
+ 		return io.ErrUnexpectedEOF
+ 	}
++
++	m.inject(mSeconds, mNanos)
+ 	return nil
+ }
+ func skipTimestamp(data []byte) (n int, err error) {
+ 	l := len(data)
+ 	iNdEx := 0

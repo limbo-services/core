@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package limbo.tests;
+option go_package = "tests";
+
+import "google/protobuf/timestamp.proto";
+import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+
+message Person {
+  google.protobuf.Timestamp birth = 1;
+  google.protobuf.Timestamp death = 2 [(gogoproto.nullable) = true];
+  repeated google.protobuf.Timestamp birtday_parties = 3 [(gogoproto.nullable) = false];
+}

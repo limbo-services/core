@@ -17,7 +17,7 @@
 */
 package tests
 
-import proto "github.com/golang/protobuf/proto"
+import proto "github.com/gogo/protobuf/proto"
 import fmt "fmt"
 import math "math"
 import _ "github.com/limbo-services/core/runtime/limbo"
@@ -553,6 +553,30 @@ func (h *testServiceHandler) _http_TestService_FetchPerson(ctx golang_org_x_net_
 	}
 
 	return nil
+}
+
+type testServiceServerPanicGuard struct {
+	handler github_com_limbo_services_core_runtime_limbo.ErrorHandler
+	inner   TestServiceServer
+}
+
+func NewTestServiceServerPanicGuard(inner TestServiceServer, handler github_com_limbo_services_core_runtime_limbo.ErrorHandler) TestServiceServer {
+	return &testServiceServerPanicGuard{inner: inner, handler: handler}
+}
+
+func (s *testServiceServerPanicGuard) Greet(ctx golang_org_x_net_context.Context, input *Person) (out *Greeting, err error) {
+	defer github_com_limbo_services_core_runtime_limbo.RecoverPanic(&err, s.handler)
+	return s.inner.Greet(ctx, input)
+}
+
+func (s *testServiceServerPanicGuard) List(input *ListOptions, stream TestService_ListServer) (err error) {
+	defer github_com_limbo_services_core_runtime_limbo.RecoverPanic(&err, s.handler)
+	return s.inner.List(input, stream)
+}
+
+func (s *testServiceServerPanicGuard) FetchPerson(ctx golang_org_x_net_context.Context, input *FetchOptions) (out *Person, err error) {
+	defer github_com_limbo_services_core_runtime_limbo.RecoverPanic(&err, s.handler)
+	return s.inner.FetchPerson(ctx, input)
 }
 
 func (m *Person) Unmarshal(data []byte) error {
