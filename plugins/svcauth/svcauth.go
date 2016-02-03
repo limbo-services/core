@@ -7,11 +7,9 @@ import (
 	"strings"
 
 	"github.com/gogo/protobuf/gogoproto"
-	"github.com/gogo/protobuf/jsonpb"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
-	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
 
 	. "github.com/fd/featherhead/tools/runtime/svcauth"
 )
@@ -243,28 +241,28 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P()
 	}
 
-	{
-		var desc = AuthDescriptionSet{}
-
-		for _, m := range methods {
-			desc.Methods = append(desc.Methods, &AuthDescription{
-				Method: m.Name,
-				Authn:  m.Authn,
-				Authz:  m.Authz,
-			})
-		}
-
-		m := jsonpb.Marshaler{}
-		data, err := m.MarshalToString(&desc)
-		if err != nil {
-			g.gen.Error(err)
-		}
-
-		g.gen.Response.File = append(g.gen.Response.File, &plugin.CodeGeneratorResponse_File{
-			Name:    proto.String(authSpecFileName(*file.Name)),
-			Content: proto.String(data),
-		})
-	}
+	// {
+	// 	var desc = AuthDescriptionSet{}
+	//
+	// 	for _, m := range methods {
+	// 		desc.Methods = append(desc.Methods, &AuthDescription{
+	// 			Method: m.Name,
+	// 			Authn:  m.Authn,
+	// 			Authz:  m.Authz,
+	// 		})
+	// 	}
+	//
+	// 	m := jsonpb.Marshaler{}
+	// 	data, err := m.MarshalToString(&desc)
+	// 	if err != nil {
+	// 		g.gen.Error(err)
+	// 	}
+	//
+	// 	g.gen.Response.File = append(g.gen.Response.File, &plugin.CodeGeneratorResponse_File{
+	// 		Name:    proto.String(authSpecFileName(*file.Name)),
+	// 		Content: proto.String(data),
+	// 	})
+	// }
 
 }
 

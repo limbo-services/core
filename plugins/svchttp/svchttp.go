@@ -84,6 +84,8 @@ func (g *svchttp) Generate(file *generator.FileDescriptor) {
 		g.generateMessageSchema(file, message, i)
 	}
 
+	g.generateBase(file)
+
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}

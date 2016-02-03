@@ -2,9 +2,7 @@ package gensql
 
 import (
 	"bytes"
-	"encoding/json"
 	"fmt"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,8 +21,9 @@ func init() {
 type gensql struct {
 	gen *generator.Generator
 
-	imports generator.PluginImports
-	sqlPkg  generator.Single
+	imports    generator.PluginImports
+	sqlPkg     generator.Single
+	runtimePkg generator.Single
 
 	models map[string]*generator.Descriptor
 }
@@ -59,6 +58,7 @@ func (g *gensql) Generate(file *generator.FileDescriptor) {
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
 	g.sqlPkg = imp.NewImport("database/sql")
+	g.runtimePkg = imp.NewImport("github.com/fd/featherhead/tools/runtime/sql")
 
 	var models []*generator.Descriptor
 
@@ -97,15 +97,6 @@ func (g *gensql) Generate(file *generator.FileDescriptor) {
 		model.DeepJoin = nil
 		model.DeepScanner = nil
 	}
-
-	// phase 4
-	for _, msg := range models {
-		g.populateScanners(msg)
-	}
-
-	// for i, msg := range file.Messages() {
-	// 	g.generateScanners(file, msg, i)
-	// }
 
 }
 
@@ -280,12 +271,6 @@ func (g *gensql) populateMessageDeep(msg *generator.Descriptor, stack []string) 
 		g.populateScanner(msg, scanner)
 		model.DeepScanner = append(model.DeepScanner, scanner)
 	}
-}
-
-func (g *gensql) populateScanners(msg *generator.Descriptor) {
-	model := sql.GetModel(msg)
-	data, _ := json.MarshalIndent(model, "", "  ")
-	fmt.Fprintln(os.Stderr, string(data))
 }
 
 func (g *gensql) populateScanner(msg *generator.Descriptor, scanner *sql.ScannerDescriptor) {
@@ -594,23 +579,23 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		case pb.FieldDescriptorProto_TYPE_BOOL:
 			g.P(dst, `.`, fieldName, ` = b`, i, `.Bool`)
 		case pb.FieldDescriptorProto_TYPE_DOUBLE:
-			g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float)`)
+			g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float64)`)
 		case pb.FieldDescriptorProto_TYPE_FLOAT:
-			g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float)`)
+			g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float64)`)
 		case pb.FieldDescriptorProto_TYPE_FIXED32,
 			pb.FieldDescriptorProto_TYPE_UINT32:
-			g.P(dst, `.`, fieldName, ` = uint32(b`, i, `.Int)`)
+			g.P(dst, `.`, fieldName, ` = uint32(b`, i, `.Int64)`)
 		case pb.FieldDescriptorProto_TYPE_FIXED64,
 			pb.FieldDescriptorProto_TYPE_UINT64:
-			g.P(dst, `.`, fieldName, ` = uint64(b`, i, `.Int)`)
+			g.P(dst, `.`, fieldName, ` = uint64(b`, i, `.Int64)`)
 		case pb.FieldDescriptorProto_TYPE_SFIXED32,
 			pb.FieldDescriptorProto_TYPE_INT32,
 			pb.FieldDescriptorProto_TYPE_SINT32:
-			g.P(dst, `.`, fieldName, ` = int32(b`, i, `.Int)`)
+			g.P(dst, `.`, fieldName, ` = int32(b`, i, `.Int64)`)
 		case pb.FieldDescriptorProto_TYPE_SFIXED64,
 			pb.FieldDescriptorProto_TYPE_INT64,
 			pb.FieldDescriptorProto_TYPE_SINT64:
-			g.P(dst, `.`, fieldName, ` = int64(b`, i, `.Int)`)
+			g.P(dst, `.`, fieldName, ` = int64(b`, i, `.Int64)`)
 		case pb.FieldDescriptorProto_TYPE_BYTES:
 			g.P(dst, `.`, fieldName, ` = b`, i, ``)
 		case pb.FieldDescriptorProto_TYPE_STRING:
@@ -620,7 +605,7 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 				if gogoproto.IsNullable(field) {
 					g.P(dst, `.`, fieldName, ` = &b`, i, `.`, g.typeName(field.GetTypeName()))
 				} else {
-					g.P(dst, `.`, fieldName, ` = b`, i, ``)
+					g.P(dst, `.`, fieldName, ` = b`, i, `.`, g.typeName(field.GetTypeName()))
 				}
 			} else {
 				g.P(`err := m`, i, `.Unmarshal(b`, i, `)`)
@@ -670,6 +655,7 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`}`)
 
 	g.P(`type `, message.Name, `Stmt interface {`)
+	g.P(`Exec(args ... interface{}) (`, g.sqlPkg.Use(), `.Result, error)`)
 	g.P(`QueryRow(args ... interface{}) (`, message.Name, `Row)`)
 	g.P(`Query(args ... interface{}) (`, message.Name, `Rows, error)`)
 	g.P(`SelectSlice(dst []*`, message.Name, `, args ... interface{}) ([]*`, message.Name, `, error)`)
@@ -727,7 +713,7 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`default:`)
 	g.P(`if b.err == nil { b.err = fmt.Errorf("unknown scanner: %s", scanner) }`)
 	g.P(`}`)
-	g.P(`stmt, err := b.db.Prepare(query)`)
+	g.P(`stmt, err := b.db.Prepare(`, g.runtimePkg.Use(), `.CleanSQL(query))`)
 	g.P(`if err != nil { if b.err == nil { b.err = err } }`)
 	g.P(`return &`, unexport(*message.Name), `Stmt{stmt: stmt, scanner: scannerFunc}`)
 	g.P(`}`)
@@ -745,6 +731,10 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`rows, err := s.stmt.Query(args...)`)
 	g.P(`if err != nil { return nil, err }`)
 	g.P(`return &`, unexport(*message.Name), `Rows{Rows: rows, scanner: s.scanner}, nil`)
+	g.P(`}`)
+
+	g.P(`func (s *`, unexport(*message.Name), `Stmt) Exec(args ... interface{}) (`, g.sqlPkg.Use(), `.Result, error) {`)
+	g.P(`return s.stmt.Exec(args...)`)
 	g.P(`}`)
 
 	g.P(`func (s *`, unexport(*message.Name), `Stmt) SelectSlice(dst []*`, message.Name, `, args ... interface{}) ([]*`, message.Name, `, error) {`)

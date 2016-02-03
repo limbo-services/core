@@ -115,6 +115,13 @@ func fieldToSchema(gen *generator.Generator, field *pb.FieldDescriptorProto) int
 		}
 
 	case pb.FieldDescriptorProto_TYPE_MESSAGE:
+		if field.GetTypeName() == ".xyz.featherhead.api.Time" {
+			return map[string]interface{}{
+				"type":   "string",
+				"format": "datetime",
+			}
+		}
+
 		return map[string]interface{}{
 			"$ref": "#/definitions/" + strings.TrimPrefix(field.GetTypeName(), "."),
 		}

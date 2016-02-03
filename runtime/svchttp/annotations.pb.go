@@ -24,6 +24,14 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
+var E_ApiHost = &proto.ExtensionDesc{
+	ExtendedType:  (*google_protobuf.FileOptions)(nil),
+	ExtensionType: (*string)(nil),
+	Field:         58801,
+	Name:          "xyz.featherhead.api.api_host",
+	Tag:           "bytes,58801,opt,name=api_host",
+}
+
 var E_Http = &proto.ExtensionDesc{
 	ExtendedType:  (*google_protobuf.MethodOptions)(nil),
 	ExtensionType: (*HttpRule)(nil),
@@ -49,6 +57,7 @@ var E_Format = &proto.ExtensionDesc{
 }
 
 func init() {
+	proto.RegisterExtension(E_ApiHost)
 	proto.RegisterExtension(E_Http)
 	proto.RegisterExtension(E_HideInSwagger)
 	proto.RegisterExtension(E_Format)

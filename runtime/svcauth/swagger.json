@@ -4,6 +4,7 @@
     "title": "",
     "version": "1"
   },
+  "host": "",
   "schemes": [
     "https",
     "wss"
@@ -41,5 +42,6 @@
       },
       "type": "object"
     }
-  }
+  },
+  "securityDefinitions": null
 }

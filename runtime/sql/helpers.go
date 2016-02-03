@@ -1,10 +1,20 @@
 package sql
 
 import (
+	"regexp"
+	"strings"
+
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 )
+
+func CleanSQL(s string) string {
+	s = regexp.MustCompile("\\n+").ReplaceAllString(s, " ")
+	s = regexp.MustCompile("\\s+").ReplaceAllString(s, " ")
+	s = strings.TrimSpace(s)
+	return s
+}
 
 func IsGoSQLValuer(msg *generator.Descriptor) bool {
 	return proto.GetBoolExtension(msg.Options, E_Gosqlvaluer, false)

@@ -3,7 +3,24 @@ package svcauth
 import (
 	"sort"
 	"strings"
+
+	"github.com/gogo/protobuf/proto"
+	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 )
+
+func GetScope(method *descriptor.MethodDescriptorProto) (string, bool) {
+	if method.Options != nil {
+		v, _ := proto.GetExtension(method.Options, E_Authz)
+		if v != nil {
+			scope := v.(*AuthzRule).Scope
+			if scope != "" {
+				return scope, true
+			}
+		}
+	}
+
+	return "", false
+}
 
 func (r *AuthnRule) SetDefaults() {
 	if r == nil {

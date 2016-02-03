@@ -2,6 +2,8 @@ package svchttp
 
 import (
 	"encoding/json"
+	"fmt"
+	"os"
 	"path"
 	"strings"
 
@@ -11,6 +13,8 @@ import (
 	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
 
 	"github.com/fd/featherhead/pkg/api/httpapi/router"
+	"github.com/fd/featherhead/tools/runtime/svcauth"
+	runtime "github.com/fd/featherhead/tools/runtime/svchttp"
 )
 
 type SwaggerInfo struct {
@@ -42,21 +46,29 @@ type SwaggerOperationObject struct {
 	Parameters  []SwaggerParameterObject         `json:"parameters,omitempty"`
 	Responses   map[string]SwaggerResponseObject `json:"responses"`
 	Tags        []string                         `json:"tags"`
+	Security    []map[string][]string            `json:"security"`
 }
 
 type SwaggerRoot struct {
-	Swagger string      `json:"swagger"`
-	Info    SwaggerInfo `json:"info"`
-	// host
-	// basePath
-	Schemes  []string `json:"schemes"`  // ["https", "wss"]
-	Consumes []string `json:"consumes"` // ["application/json; charset=utf-8"]
-	Produces []string `json:"produces"` // ["application/json; charset=utf-8"]
+	Swagger  string      `json:"swagger"`
+	Info     SwaggerInfo `json:"info"`
+	Host     string      `json:"host"`
+	Schemes  []string    `json:"schemes"`  // ["https", "wss"]
+	Consumes []string    `json:"consumes"` // ["application/json; charset=utf-8"]
+	Produces []string    `json:"produces"` // ["application/json; charset=utf-8"]
 
 	// swagger.Paths["<path>"]
 	Paths map[string]map[string]*SwaggerOperationObject `json:"paths"`
 
-	Definitions map[string]interface{} `json:"definitions"`
+	Definitions         map[string]interface{}                `json:"definitions"`
+	SecurityDefinitions map[string]*SwaggerSecurityDefinition `json:"securityDefinitions"`
+}
+
+type SwaggerSecurityDefinition struct {
+	Type             string            `json:"type"`
+	Flow             string            `json:"flow"`
+	AuthorizationUrl string            `json:"authorizationUrl"`
+	Scopes           map[string]string `json:"scopes"`
 }
 
 func (g *svchttp) loadSwaggerSpec(file *generator.FileDescriptor) *SwaggerRoot {
@@ -88,6 +100,20 @@ func (g *svchttp) loadSwaggerSpec(file *generator.FileDescriptor) *SwaggerRoot {
 		Produces: []string{"application/json; charset=utf-8"},
 
 		Paths: map[string]map[string]*SwaggerOperationObject{},
+	}
+}
+
+func (g *svchttp) generateBase(file *generator.FileDescriptor) {
+	spec := g.loadSwaggerSpec(file)
+	defer g.saveSwaggerSpec(file, spec)
+
+	if spec.Host == "" {
+		if v, _ := proto.GetExtension(file.Options, runtime.E_ApiHost); v != nil {
+			fmt.Fprintf(os.Stderr, "Host: %v\n", v)
+			if p, _ := v.(*string); p != nil && *p != "" {
+				spec.Host = *p
+			}
+		}
 	}
 }
 
@@ -137,6 +163,33 @@ func (g *svchttp) generateSwaggerSpec(file *generator.FileDescriptor, service *p
 			Schema: map[string]string{
 				"$ref": "#/definitions/" + file.GetPackage() + "." + strings.Join(outputType.TypeName(), "."),
 			},
+		}
+
+		if scope, ok := svcauth.GetScope(api.method); ok {
+			if spec.SecurityDefinitions == nil {
+				spec.SecurityDefinitions = make(map[string]*SwaggerSecurityDefinition)
+			}
+
+			oauth := spec.SecurityDefinitions["oauth"]
+			if oauth == nil {
+				oauth = &SwaggerSecurityDefinition{
+					Type:             "oauth2",
+					Flow:             "implicit",
+					AuthorizationUrl: "",
+					Scopes:           make(map[string]string),
+				}
+				spec.SecurityDefinitions["oauth"] = oauth
+			}
+
+			if _, f := oauth.Scopes[scope]; !f {
+				oauth.Scopes[scope] = ""
+			}
+
+			operation.Security = []map[string][]string{
+				{
+					"oauth": {scope},
+				},
+			}
 		}
 
 		g.appendPathParameters(operation, pattern)
