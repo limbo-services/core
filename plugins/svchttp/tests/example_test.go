@@ -12,7 +12,7 @@ import (
 	"golang.org/x/net/context"
 
 	"github.com/fd/featherhead/pkg/api/httpapi/router"
-	"github.com/fd/featherhead/tools/runtime/svchttp"
+	"github.com/limbo-services/core/runtime/limbo"
 )
 
 func TestList(t *testing.T) {
@@ -181,14 +181,14 @@ func TestFetchPerson(t *testing.T) {
 type testService struct{}
 
 func (s *testService) Greet(ctx context.Context, person *Person) (*Greeting, error) {
-	if !svchttp.FromGateway(ctx) {
+	if !limbo.FromGateway(ctx) {
 		panic("not from gateway")
 	}
 	return &Greeting{Text: fmt.Sprintf("Hello %s!", person.Name)}, nil
 }
 
 func (s *testService) List(options *ListOptions, stream TestService_ListServer) error {
-	if !svchttp.FromGateway(stream.Context()) {
+	if !limbo.FromGateway(stream.Context()) {
 		panic("not from gateway")
 	}
 	for i, l := options.After, options.After+25; i < l; i++ {

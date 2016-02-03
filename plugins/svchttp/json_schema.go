@@ -8,7 +8,7 @@ import (
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 
-	. "github.com/fd/featherhead/tools/runtime/svchttp"
+	. "github.com/limbo-services/core/runtime/limbo"
 )
 
 func messageToSchema(gen *generator.Generator, desc *generator.Descriptor) interface{} {

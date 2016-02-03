@@ -11,7 +11,7 @@ import (
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 
 	"github.com/fd/featherhead/pkg/api/httpapi/router"
-	. "github.com/fd/featherhead/tools/runtime/svchttp"
+	. "github.com/limbo-services/core/runtime/limbo"
 )
 
 // Paths for packages used by code generated in this file,
@@ -22,7 +22,7 @@ const (
 	grpcCodesPkgPath  = "google.golang.org/grpc/codes"
 	httpPkgPath       = "net/http"
 	routerPkgPath     = "github.com/fd/featherhead/pkg/api/httpapi/router"
-	runtimePkgPath    = "github.com/fd/featherhead/tools/runtime/svchttp"
+	runtimePkgPath    = "github.com/limbo-services/core/runtime/limbo"
 	jujuErrorsPkgPath = "github.com/juju/errors"
 	jsonPkgPath       = "encoding/json"
 )

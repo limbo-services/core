@@ -1,4 +1,4 @@
-package svcpanic
+package limbo
 
 type ErrorHandler interface {
 	HandlePanic(r interface{}) error

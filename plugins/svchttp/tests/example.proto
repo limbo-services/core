@@ -1,10 +1,10 @@
 syntax = "proto3";
 
 
-package xyz.featherhead.tests;
+package limbo.tests;
 option go_package = "tests";
 
-import "github.com/fd/featherhead/tools/runtime/svchttp/annotations.proto";
+import "github.com/limbo-services/core/runtime/limbo/annotations.proto";
 
 service TestService {
 

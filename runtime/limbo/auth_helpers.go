@@ -1,4 +1,4 @@
-package svcauth
+package limbo
 
 import (
 	"sort"

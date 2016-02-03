@@ -7,11 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/fd/featherhead/tools/runtime/sql"
 	"github.com/gogo/protobuf/gogoproto"
 	"github.com/gogo/protobuf/proto"
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
+
+	"github.com/limbo-services/core/runtime/limbo"
 )
 
 func init() {
@@ -58,12 +59,12 @@ func (g *gensql) Generate(file *generator.FileDescriptor) {
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
 	g.sqlPkg = imp.NewImport("database/sql")
-	g.runtimePkg = imp.NewImport("github.com/fd/featherhead/tools/runtime/sql")
+	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
 
 	var models []*generator.Descriptor
 
 	for _, msg := range file.Messages() {
-		model := sql.GetModel(msg)
+		model := limbo.GetModel(msg)
 		if model == nil {
 			continue
 		}
@@ -92,7 +93,7 @@ func (g *gensql) Generate(file *generator.FileDescriptor) {
 
 	// phase 3
 	for _, msg := range models {
-		model := sql.GetModel(msg)
+		model := limbo.GetModel(msg)
 		model.DeepColumn = nil
 		model.DeepJoin = nil
 		model.DeepScanner = nil
@@ -109,7 +110,7 @@ func unexport(s string) string        { return strings.ToLower(s[:1]) + s[1:] }
 func prefixColumn(p, c string) string { return strings.TrimPrefix(p+"."+c, ".") }
 
 func (g *gensql) populateMessage(file *generator.FileDescriptor, msg *generator.Descriptor) {
-	model := sql.GetModel(msg)
+	model := limbo.GetModel(msg)
 	model.MessageType = "." + file.GetPackage() + "." + msg.GetName()
 
 	{ // default scanner
@@ -121,7 +122,7 @@ func (g *gensql) populateMessage(file *generator.FileDescriptor, msg *generator.
 			}
 		}
 		if !found {
-			model.Scanner = append(model.Scanner, &sql.ScannerDescriptor{Fields: "*"})
+			model.Scanner = append(model.Scanner, &limbo.ScannerDescriptor{Fields: "*"})
 		}
 	}
 
@@ -130,7 +131,7 @@ func (g *gensql) populateMessage(file *generator.FileDescriptor, msg *generator.
 	}
 
 	for _, field := range msg.GetField() {
-		if column := sql.GetColumn(field); column != nil {
+		if column := limbo.GetColumn(field); column != nil {
 			column.MessageType = "." + file.GetPackage() + "." + msg.GetName()
 			column.FieldName = field.GetName()
 			if column.Name == "" {
@@ -140,7 +141,7 @@ func (g *gensql) populateMessage(file *generator.FileDescriptor, msg *generator.
 			model.Column = append(model.Column, column)
 		}
 
-		if join := sql.GetJoin(field); join != nil {
+		if join := limbo.GetJoin(field); join != nil {
 			if field.GetType() != pb.FieldDescriptorProto_TYPE_MESSAGE {
 				g.gen.Fail(field.GetName(), "in", msg.GetName(), "must be a message")
 			}
@@ -165,13 +166,13 @@ func (g *gensql) populateMessage(file *generator.FileDescriptor, msg *generator.
 		}
 	}
 
-	sort.Sort(sql.SortedColumnDescriptors(model.Column))
-	sort.Sort(sql.SortedJoinDescriptors(model.Join))
-	sort.Sort(sql.SortedScannerDescriptors(model.Scanner))
+	sort.Sort(limbo.SortedColumnDescriptors(model.Column))
+	sort.Sort(limbo.SortedJoinDescriptors(model.Join))
+	sort.Sort(limbo.SortedScannerDescriptors(model.Scanner))
 }
 
 func (g *gensql) populateMessageDeep(msg *generator.Descriptor, stack []string) {
-	model := sql.GetModel(msg)
+	model := limbo.GetModel(msg)
 
 	for _, i := range stack {
 		if i == model.MessageType {
@@ -195,12 +196,12 @@ func (g *gensql) populateMessageDeep(msg *generator.Descriptor, stack []string) 
 
 		g.populateMessageDeep(fmsg, stack)
 
-		fmodel := sql.GetModel(fmsg)
+		fmodel := limbo.GetModel(fmsg)
 
 		join.Table = fmodel.Table
 
 		for _, fjoin := range fmodel.DeepJoin {
-			fjoin = proto.Clone(fjoin).(*sql.JoinDescriptor)
+			fjoin = proto.Clone(fjoin).(*limbo.JoinDescriptor)
 			fjoin.FieldName = join.FieldName + "." + fjoin.FieldName
 			fjoin.Name = join.Name + "_" + fjoin.Name
 			if fjoin.JoinedWith == "" {
@@ -212,7 +213,7 @@ func (g *gensql) populateMessageDeep(msg *generator.Descriptor, stack []string) 
 		}
 
 		for _, fcolumn := range fmodel.DeepColumn {
-			fcolumn = proto.Clone(fcolumn).(*sql.ColumnDescriptor)
+			fcolumn = proto.Clone(fcolumn).(*limbo.ColumnDescriptor)
 			fcolumn.FieldName = join.FieldName + "." + fcolumn.FieldName
 			if strings.ContainsRune(fcolumn.Name, '.') {
 				fcolumn.Name = join.Name + "_" + fcolumn.Name
@@ -228,7 +229,7 @@ func (g *gensql) populateMessageDeep(msg *generator.Descriptor, stack []string) 
 		}
 
 		for _, fscanner := range fmodel.DeepScanner {
-			fscanner = proto.Clone(fscanner).(*sql.ScannerDescriptor)
+			fscanner = proto.Clone(fscanner).(*limbo.ScannerDescriptor)
 			if strings.ContainsRune(fscanner.Name, ':') {
 				fscanner.Name = join.FieldName + "." + fscanner.Name
 			} else {
@@ -236,7 +237,7 @@ func (g *gensql) populateMessageDeep(msg *generator.Descriptor, stack []string) 
 			}
 
 			for i, fjoin := range fscanner.Join {
-				fjoin = proto.Clone(fjoin).(*sql.JoinDescriptor)
+				fjoin = proto.Clone(fjoin).(*limbo.JoinDescriptor)
 				fjoin.FieldName = join.FieldName + "." + fjoin.FieldName
 				fjoin.Name = join.Name + "_" + fjoin.Name
 				if fjoin.JoinedWith == "" {
@@ -248,7 +249,7 @@ func (g *gensql) populateMessageDeep(msg *generator.Descriptor, stack []string) 
 			}
 
 			for i, fcolumn := range fscanner.Column {
-				fcolumn = proto.Clone(fcolumn).(*sql.ColumnDescriptor)
+				fcolumn = proto.Clone(fcolumn).(*limbo.ColumnDescriptor)
 				fcolumn.FieldName = join.FieldName + "." + fcolumn.FieldName
 				if strings.ContainsRune(fcolumn.Name, '.') {
 					fcolumn.Name = join.Name + "_" + fcolumn.Name
@@ -273,7 +274,7 @@ func (g *gensql) populateMessageDeep(msg *generator.Descriptor, stack []string) 
 	}
 }
 
-func (g *gensql) populateScanner(msg *generator.Descriptor, scanner *sql.ScannerDescriptor) {
+func (g *gensql) populateScanner(msg *generator.Descriptor, scanner *limbo.ScannerDescriptor) {
 	if len(scanner.Column) > 0 {
 		return
 	}
@@ -281,7 +282,7 @@ func (g *gensql) populateScanner(msg *generator.Descriptor, scanner *sql.Scanner
 	var (
 		ops   = strings.Split(scanner.Fields, ",")
 		queue = ops
-		model = sql.GetModel(msg)
+		model = limbo.GetModel(msg)
 	)
 
 	queue = ops
@@ -338,7 +339,7 @@ func (g *gensql) populateScanner(msg *generator.Descriptor, scanner *sql.Scanner
 		}
 	}
 
-	selected := make(map[string]*sql.ColumnDescriptor)
+	selected := make(map[string]*limbo.ColumnDescriptor)
 
 	queue = ops
 	ops = nil
@@ -372,7 +373,7 @@ func (g *gensql) populateScanner(msg *generator.Descriptor, scanner *sql.Scanner
 		}
 	}
 
-	var columns []*sql.ColumnDescriptor
+	var columns []*limbo.ColumnDescriptor
 
 	queue = ops
 	ops = nil
@@ -423,21 +424,21 @@ func (g *gensql) populateScanner(msg *generator.Descriptor, scanner *sql.Scanner
 		}
 	}
 
-	sort.Sort(sql.SortedColumnDescriptors(scanner.Column))
-	sort.Sort(sql.SortedJoinDescriptors(scanner.Join))
+	sort.Sort(limbo.SortedColumnDescriptors(scanner.Column))
+	sort.Sort(limbo.SortedJoinDescriptors(scanner.Join))
 }
 
 func (g *gensql) generateScanners(file *generator.FileDescriptor, message *generator.Descriptor) {
-	model := sql.GetModel(message)
+	model := limbo.GetModel(message)
 	for _, scanner := range model.Scanner {
 		g.generateScanner(file, message, scanner)
 	}
 }
 
-func (g *gensql) generateQueryPrefix(message *generator.Descriptor, scanner *sql.ScannerDescriptor) string {
+func (g *gensql) generateQueryPrefix(message *generator.Descriptor, scanner *limbo.ScannerDescriptor) string {
 	var (
 		buf   bytes.Buffer
-		model = sql.GetModel(message)
+		model = limbo.GetModel(message)
 	)
 
 	buf.WriteString("SELECT")
@@ -479,7 +480,7 @@ func (g *gensql) generateQueryPrefix(message *generator.Descriptor, scanner *sql
 	return buf.String()
 }
 
-func (g *gensql) generateScanner(file *generator.FileDescriptor, message *generator.Descriptor, scanner *sql.ScannerDescriptor) {
+func (g *gensql) generateScanner(file *generator.FileDescriptor, message *generator.Descriptor, scanner *limbo.ScannerDescriptor) {
 	scannerFuncName := `scan_` + message.GetName()
 	if scanner.Name != "" {
 		scannerFuncName += `_` + scanner.Name
@@ -520,7 +521,7 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		case pb.FieldDescriptorProto_TYPE_STRING:
 			g.P(`b`, i, ` `, g.sqlPkg.Use(), `.NullString`)
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			if sql.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+			if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
 				g.P(`b`, i, ` Null`, g.typeName(field.GetTypeName()))
 			} else {
 				g.P(`b`, i, ` []byte`)
@@ -558,7 +559,7 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 
 		switch field.GetType() {
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			if sql.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+			if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
 				valid = fmt.Sprintf(`b%d.Valid`, i)
 			} else {
 				valid = fmt.Sprintf(`b%d != nil`, i)
@@ -601,7 +602,7 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		case pb.FieldDescriptorProto_TYPE_STRING:
 			g.P(dst, `.`, fieldName, ` = b`, i, `.String`)
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			if sql.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+			if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
 				if gogoproto.IsNullable(field) {
 					g.P(dst, `.`, fieldName, ` = &b`, i, `.`, g.typeName(field.GetTypeName()))
 				} else {
@@ -647,7 +648,7 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 }
 
 func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator.Descriptor) {
-	model := sql.GetModel(message)
+	model := limbo.GetModel(message)
 
 	g.P(`type `, message.Name, `StmtBuilder interface {`)
 	g.P(`Prepare(scanner string, query string) `, message.Name, `Stmt`)

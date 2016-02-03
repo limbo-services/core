@@ -11,7 +11,7 @@ import (
 	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 
-	. "github.com/fd/featherhead/tools/runtime/svcauth"
+	. "github.com/limbo-services/core/runtime/limbo"
 )
 
 func init() {

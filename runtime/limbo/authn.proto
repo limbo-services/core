@@ -1,7 +1,7 @@
 syntax = "proto3";
 
-package xyz.featherhead.api;
-option go_package = "svcauth";
+package limbo;
+option go_package = "limbo";
 
 import "github.com/gogo/protobuf/gogoproto/gogo.proto";
 

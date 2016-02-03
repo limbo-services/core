@@ -1,4 +1,4 @@
-package svchttp
+package limbo
 
 import (
 	"bytes"

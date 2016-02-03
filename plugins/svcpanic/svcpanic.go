@@ -62,7 +62,7 @@ func (g *svcpanic) Generate(file *generator.FileDescriptor) {
 	g.imports = imp
 	g.contextPkg = imp.NewImport("golang.org/x/net/context")
 	g.grpcPkg = imp.NewImport("google.golang.org/grpc")
-	g.runtimePkg = imp.NewImport("github.com/fd/featherhead/tools/runtime/svcpanic")
+	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
 
 	for i, service := range file.FileDescriptorProto.Service {
 		g.generateService(file, service, i)

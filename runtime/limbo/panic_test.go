@@ -1,4 +1,4 @@
-package svcpanic
+package limbo
 
 import (
 	"errors"

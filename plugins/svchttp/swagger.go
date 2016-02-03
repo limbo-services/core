@@ -13,8 +13,7 @@ import (
 	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
 
 	"github.com/fd/featherhead/pkg/api/httpapi/router"
-	"github.com/fd/featherhead/tools/runtime/svcauth"
-	runtime "github.com/fd/featherhead/tools/runtime/svchttp"
+	"github.com/limbo-services/core/runtime/limbo"
 )
 
 type SwaggerInfo struct {
@@ -108,7 +107,7 @@ func (g *svchttp) generateBase(file *generator.FileDescriptor) {
 	defer g.saveSwaggerSpec(file, spec)
 
 	if spec.Host == "" {
-		if v, _ := proto.GetExtension(file.Options, runtime.E_ApiHost); v != nil {
+		if v, _ := proto.GetExtension(file.Options, limbo.E_ApiHost); v != nil {
 			fmt.Fprintf(os.Stderr, "Host: %v\n", v)
 			if p, _ := v.(*string); p != nil && *p != "" {
 				spec.Host = *p
@@ -165,7 +164,7 @@ func (g *svchttp) generateSwaggerSpec(file *generator.FileDescriptor, service *p
 			},
 		}
 
-		if scope, ok := svcauth.GetScope(api.method); ok {
+		if scope, ok := limbo.GetScope(api.method); ok {
 			if spec.SecurityDefinitions == nil {
 				spec.SecurityDefinitions = make(map[string]*SwaggerSecurityDefinition)
 			}
