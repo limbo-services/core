@@ -17,7 +17,7 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/fd/featherhead/pkg/log"
+	"github.com/apex/log"
 )
 
 func RenderMessageJSON(w http.ResponseWriter, code int, msg proto.Message) {
@@ -30,7 +30,7 @@ func RenderMessageJSON(w http.ResponseWriter, code int, msg proto.Message) {
 	m := jsonpb.Marshaler{}
 	err := m.Marshal(w, msg)
 	if err != nil {
-		log.Logger.Error(err)
+		log.WithError(err).Error("failed to marshal GRPC gateway response")
 	}
 }
 
@@ -347,7 +347,7 @@ func respondWithGRPCError(w http.ResponseWriter, err error) {
 
 	data, err := json.Marshal(&msg)
 	if err != nil {
-		log.Logger.Errorf("error: %s", err)
+		log.WithError(err).Errorf("failed to marshal error message")
 		status = http.StatusInternalServerError
 		data = []byte(`{"error": "failed to marshal error message"}`)
 		err = nil
@@ -396,7 +396,7 @@ func httpStatusFromCode(code codes.Code) int {
 		return http.StatusInternalServerError
 	}
 
-	log.Logger.Errorf("Unknown gRPC error code: %v", code)
+	log.Errorf("Unknown GRPC error code: %v", code)
 	return http.StatusInternalServerError
 }
 

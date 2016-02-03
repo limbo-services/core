@@ -4,6 +4,7 @@
     "title": "",
     "version": "1"
   },
+  "host": "",
   "schemes": [
     "https",
     "wss"
@@ -23,7 +24,7 @@
             "name": "parameters",
             "in": "body",
             "schema": {
-              "$ref": "#/definitions/xyz.featherhead.tests.Person"
+              "$ref": "#/definitions/limbo.tests.Person"
             }
           }
         ],
@@ -31,13 +32,14 @@
           "200": {
             "description": "Response on success",
             "schema": {
-              "$ref": "#/definitions/xyz.featherhead.tests.Greeting"
+              "$ref": "#/definitions/limbo.tests.Greeting"
             }
           }
         },
         "tags": [
           "TestService"
-        ]
+        ],
+        "security": null
       }
     },
     "/list": {
@@ -54,13 +56,14 @@
           "200": {
             "description": "Response on success",
             "schema": {
-              "$ref": "#/definitions/xyz.featherhead.tests.Item"
+              "$ref": "#/definitions/limbo.tests.Item"
             }
           }
         },
         "tags": [
           "TestService"
-        ]
+        ],
+        "security": null
       }
     },
     "/person/{id}": {
@@ -80,18 +83,19 @@
           "200": {
             "description": "Response on success",
             "schema": {
-              "$ref": "#/definitions/xyz.featherhead.tests.Person"
+              "$ref": "#/definitions/limbo.tests.Person"
             }
           }
         },
         "tags": [
           "TestService"
-        ]
+        ],
+        "security": null
       }
     }
   },
   "definitions": {
-    "xyz.featherhead.tests.FetchOptions": {
+    "limbo.tests.FetchOptions": {
       "properties": {
         "id": {
           "format": "int64",
@@ -100,7 +104,7 @@
       },
       "type": "object"
     },
-    "xyz.featherhead.tests.Greeting": {
+    "limbo.tests.Greeting": {
       "properties": {
         "text": {
           "type": "string"
@@ -108,7 +112,7 @@
       },
       "type": "object"
     },
-    "xyz.featherhead.tests.Item": {
+    "limbo.tests.Item": {
       "properties": {
         "index": {
           "format": "int64",
@@ -117,7 +121,7 @@
       },
       "type": "object"
     },
-    "xyz.featherhead.tests.ListOptions": {
+    "limbo.tests.ListOptions": {
       "properties": {
         "after": {
           "format": "int64",
@@ -126,7 +130,7 @@
       },
       "type": "object"
     },
-    "xyz.featherhead.tests.Person": {
+    "limbo.tests.Person": {
       "properties": {
         "name": {
           "type": "string"
@@ -134,5 +138,6 @@
       },
       "type": "object"
     }
-  }
+  },
+  "securityDefinitions": null
 }

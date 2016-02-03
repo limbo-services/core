@@ -4,8 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"testing"
-
-	//"github.com/fd/featherhead/pkg/api/svcauth"
 )
 
 func TestPanic(t *testing.T) {

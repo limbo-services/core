@@ -11,8 +11,8 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/fd/featherhead/pkg/api/httpapi/router"
 	"github.com/limbo-services/core/runtime/limbo"
+	"github.com/limbo-services/core/runtime/router"
 )
 
 func TestList(t *testing.T) {

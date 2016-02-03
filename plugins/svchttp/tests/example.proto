@@ -10,14 +10,14 @@ service TestService {
 
   // Get a greeting using a Person
   rpc Greet(Person) returns (Greeting) {
-    option (api.http) = {
+    option (limbo.http) = {
       post: "/greet"
     };
   };
 
   // List all indexes
   rpc List(ListOptions) returns (stream Item) {
-    option (api.http) = {
+    option (limbo.http) = {
       get: "/list?after={after}"
       paged: true
     };
@@ -25,7 +25,7 @@ service TestService {
 
   // Fetch a person
   rpc FetchPerson(FetchOptions) returns (Person) {
-    option (api.http) = {
+    option (limbo.http) = {
       get: "/person/{id}"
     };
   };

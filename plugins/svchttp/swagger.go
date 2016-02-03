@@ -12,8 +12,8 @@ import (
 	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
 	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
 
-	"github.com/fd/featherhead/pkg/api/httpapi/router"
 	"github.com/limbo-services/core/runtime/limbo"
+	"github.com/limbo-services/core/runtime/router"
 )
 
 type SwaggerInfo struct {
