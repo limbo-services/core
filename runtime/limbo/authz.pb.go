@@ -4,13 +4,13 @@
 
 package limbo
 
-import proto "github.com/gogo/protobuf/proto"
+import proto "github.com/limbo-services/protobuf/proto"
 import fmt "fmt"
 import math "math"
-import _ "github.com/gogo/protobuf/gogoproto"
+import _ "github.com/limbo-services/protobuf/gogoproto"
 
 import strings "strings"
-import github_com_gogo_protobuf_proto "github.com/gogo/protobuf/proto"
+import github_com_limbo_services_protobuf_proto "github.com/limbo-services/protobuf/proto"
 import sort "sort"
 import strconv "strconv"
 import reflect "reflect"
@@ -33,9 +33,6 @@ func (m *AuthzRule) Reset()         { *m = AuthzRule{} }
 func (m *AuthzRule) String() string { return proto.CompactTextString(m) }
 func (*AuthzRule) ProtoMessage()    {}
 
-func init() {
-	proto.RegisterType((*AuthzRule)(nil), "limbo.AuthzRule")
-}
 func (this *AuthzRule) GoString() string {
 	if this == nil {
 		return "nil"
@@ -56,7 +53,7 @@ func valueToGoStringAuthz(v interface{}, typ string) string {
 	pv := reflect.Indirect(rv).Interface()
 	return fmt.Sprintf("func(v %v) *%v { return &v } ( %#v )", typ, typ, pv)
 }
-func extensionToGoStringAuthz(e map[int32]github_com_gogo_protobuf_proto.Extension) string {
+func extensionToGoStringAuthz(e map[int32]github_com_limbo_services_protobuf_proto.Extension) string {
 	if e == nil {
 		return "nil"
 	}
@@ -72,4 +69,7 @@ func extensionToGoStringAuthz(e map[int32]github_com_gogo_protobuf_proto.Extensi
 	}
 	s += strings.Join(ss, ",") + "}"
 	return s
+}
+func init() {
+	proto.RegisterType((*AuthzRule)(nil), "limbo.AuthzRule")
 }

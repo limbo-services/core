@@ -23,10 +23,10 @@ It has these top-level messages:
 */
 package limbo
 
-import proto "github.com/gogo/protobuf/proto"
+import proto "github.com/limbo-services/protobuf/proto"
 import fmt "fmt"
 import math "math"
-import google_protobuf "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
+import google_protobuf "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal
@@ -89,6 +89,14 @@ var E_Format = &proto.ExtensionDesc{
 	Tag:           "bytes,51303,opt,name=format",
 }
 
+var E_Required = &proto.ExtensionDesc{
+	ExtendedType:  (*google_protobuf.FieldOptions)(nil),
+	ExtensionType: (*bool)(nil),
+	Field:         51304,
+	Name:          "limbo.required",
+	Tag:           "varint,51304,opt,name=required",
+}
+
 var E_DefaultAuthn = &proto.ExtensionDesc{
 	ExtendedType:  (*google_protobuf.ServiceOptions)(nil),
 	ExtensionType: (*AuthnRule)(nil),
@@ -137,6 +145,7 @@ func init() {
 	proto.RegisterExtension(E_Join)
 	proto.RegisterExtension(E_HideInSwagger)
 	proto.RegisterExtension(E_Format)
+	proto.RegisterExtension(E_Required)
 	proto.RegisterExtension(E_DefaultAuthn)
 	proto.RegisterExtension(E_DefaultAuthz)
 	proto.RegisterExtension(E_Authn)

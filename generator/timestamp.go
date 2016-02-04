@@ -1,9 +1,9 @@
 package generator
 
 import (
-	"github.com/gogo/protobuf/gogoproto"
-	"github.com/gogo/protobuf/proto"
-	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
+	"github.com/limbo-services/protobuf/gogoproto"
+	"github.com/limbo-services/protobuf/proto"
+	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
 )
 
 var (

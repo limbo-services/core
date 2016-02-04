@@ -4,8 +4,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/gogo/protobuf/proto"
-	"github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
+	"github.com/limbo-services/protobuf/proto"
+	"github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
 )
 
 func GetScope(method *descriptor.MethodDescriptorProto) (string, bool) {

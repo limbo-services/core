@@ -1,6 +1,6 @@
 package plugin
 
-import "github.com/gogo/protobuf/protoc-gen-gogo/generator"
+import "github.com/limbo-services/protobuf/protoc-gen-gogo/generator"
 
 func init() {
 	generator.RegisterPlugin(new(builtin))

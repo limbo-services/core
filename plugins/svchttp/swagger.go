@@ -7,10 +7,10 @@ import (
 	"path"
 	"strings"
 
-	"github.com/gogo/protobuf/proto"
-	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
-	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
-	plugin "github.com/gogo/protobuf/protoc-gen-gogo/plugin"
+	"github.com/limbo-services/protobuf/proto"
+	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
+	"github.com/limbo-services/protobuf/protoc-gen-gogo/generator"
+	plugin "github.com/limbo-services/protobuf/protoc-gen-gogo/plugin"
 
 	"github.com/limbo-services/core/runtime/limbo"
 	"github.com/limbo-services/core/runtime/router"

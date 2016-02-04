@@ -4,10 +4,40 @@ package limbo.tests;
 option go_package = "tests";
 
 import "google/protobuf/timestamp.proto";
-import "github.com/gogo/protobuf/gogoproto/gogo.proto";
+import "github.com/limbo-services/protobuf/gogoproto/gogo.proto";
+import "github.com/limbo-services/core/runtime/limbo/annotations.proto";
 
+// Person holds all personal information for an account holder
 message Person {
-  google.protobuf.Timestamp birth = 1;
+  // The names of a person
+  Names name = 5;
+  // Any gender
+  Gender gender = 4;
+  google.protobuf.Timestamp birth = 1 [(limbo.required) = true];
   google.protobuf.Timestamp death = 2 [(gogoproto.nullable) = true];
   repeated google.protobuf.Timestamp birtday_parties = 3 [(gogoproto.nullable) = false];
+
+  // A oneof comment
+  oneof foo_bar {
+    // a field comment for foo
+    string foo = 6;
+    // a field comment for bar
+    string bar = 7;
+  }
+
+  message Names {
+    string first    = 1 [(limbo.required) = true];
+    string middle   = 2;
+    string last     = 3 [(limbo.required) = true];
+    string nickname = 4;
+  }
+
+  enum Gender {
+    Any = 0;
+    Female = 1;
+    Male = 2;
+    TransFemale = 3;
+    TransMale = 4;
+    Other = 5;
+  }
 }

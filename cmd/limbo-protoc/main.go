@@ -32,6 +32,7 @@ func main() {
 	plugins := strings.Join(filterEnabled([]string{
 		"grpc",
 		"builtintypes",
+		"jsonschema",
 		enabled("svcpanic", svcpanic, true),
 		enabled("svcauth", svcauth, true),
 		enabled("svchttp", svchttp, true),
@@ -52,7 +53,7 @@ func main() {
 
 	var opts []string
 	opts = append(opts, "plugins="+plugins)
-	opts = append(opts, "Mgoogle/protobuf/descriptor.proto=github.com/gogo/protobuf/protoc-gen-gogo/descriptor")
+	opts = append(opts, "Mgoogle/protobuf/descriptor.proto=github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor")
 	opts = append(opts, "Mgoogle/protobuf/timestamp.proto=github.com/limbo-services/core/runtime/google/protobuf")
 
 	var args []string

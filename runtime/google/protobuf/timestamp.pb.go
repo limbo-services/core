@@ -16,7 +16,7 @@ package protobuf
 import (
 	"time"
 
-	proto "github.com/gogo/protobuf/proto"
+	proto "github.com/limbo-services/protobuf/proto"
 )
 import fmt "fmt"
 import math "math"

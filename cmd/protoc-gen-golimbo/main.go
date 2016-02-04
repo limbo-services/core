@@ -1,11 +1,12 @@
 package main
 
 import (
-	"github.com/gogo/protobuf/vanity"
-	"github.com/gogo/protobuf/vanity/command"
+	"github.com/limbo-services/protobuf/vanity"
+	"github.com/limbo-services/protobuf/vanity/command"
 	"github.com/limbo-services/core/generator"
 
 	_ "github.com/limbo-services/core/plugins/builtintypes"
+	_ "github.com/limbo-services/core/plugins/jsonschema"
 	_ "github.com/limbo-services/core/plugins/sql"
 	_ "github.com/limbo-services/core/plugins/svcauth"
 	_ "github.com/limbo-services/core/plugins/svchttp"

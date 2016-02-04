@@ -13,7 +13,7 @@
 */
 package protobuf
 
-import proto "github.com/gogo/protobuf/proto"
+import proto "github.com/limbo-services/protobuf/proto"
 import fmt "fmt"
 import math "math"
 

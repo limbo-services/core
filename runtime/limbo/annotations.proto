@@ -23,6 +23,7 @@ extend google.protobuf.FieldOptions {
   optional JoinDescriptor join     = 51301;
   optional bool hideInSwagger      = 51302;
   optional string format           = 51303;
+  optional bool required           = 51304;
 }
 
 extend google.protobuf.ServiceOptions {

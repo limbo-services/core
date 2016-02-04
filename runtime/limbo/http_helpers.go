@@ -9,9 +9,9 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/gogo/protobuf/jsonpb"
-	"github.com/gogo/protobuf/proto"
-	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
+	"github.com/limbo-services/protobuf/jsonpb"
+	"github.com/limbo-services/protobuf/proto"
+	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"

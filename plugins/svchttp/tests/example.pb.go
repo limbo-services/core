@@ -17,7 +17,7 @@
 */
 package tests
 
-import proto "github.com/gogo/protobuf/proto"
+import proto "github.com/limbo-services/protobuf/proto"
 import fmt "fmt"
 import math "math"
 import _ "github.com/limbo-services/core/runtime/limbo"

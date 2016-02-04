@@ -4,10 +4,10 @@
 
 package limbo
 
-import proto "github.com/gogo/protobuf/proto"
+import proto "github.com/limbo-services/protobuf/proto"
 import fmt "fmt"
 import math "math"
-import _ "github.com/gogo/protobuf/gogoproto"
+import _ "github.com/limbo-services/protobuf/gogoproto"
 
 // Reference imports to suppress errors if they are not otherwise used.
 var _ = proto.Marshal

@@ -13,13 +13,16 @@
 */
 package tests
 
-import proto "github.com/gogo/protobuf/proto"
+import proto "github.com/limbo-services/protobuf/proto"
 import fmt "fmt"
 import math "math"
 import google_protobuf "github.com/limbo-services/core/runtime/google/protobuf"
-import _ "github.com/gogo/protobuf/gogoproto"
+import _ "github.com/limbo-services/protobuf/gogoproto"
+import _ "github.com/limbo-services/core/runtime/limbo"
 
 import time "time"
+
+import github_com_limbo_services_core_runtime_limbo "github.com/limbo-services/core/runtime/limbo"
 
 import io "io"
 
@@ -28,15 +31,88 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
+type Person_Gender int32
+
+const (
+	Person_Any         Person_Gender = 0
+	Person_Female      Person_Gender = 1
+	Person_Male        Person_Gender = 2
+	Person_TransFemale Person_Gender = 3
+	Person_TransMale   Person_Gender = 4
+	Person_Other       Person_Gender = 5
+)
+
+var Person_Gender_name = map[int32]string{
+	0: "Any",
+	1: "Female",
+	2: "Male",
+	3: "TransFemale",
+	4: "TransMale",
+	5: "Other",
+}
+var Person_Gender_value = map[string]int32{
+	"Any":         0,
+	"Female":      1,
+	"Male":        2,
+	"TransFemale": 3,
+	"TransMale":   4,
+	"Other":       5,
+}
+
+func (x Person_Gender) String() string {
+	return proto.EnumName(Person_Gender_name, int32(x))
+}
+
+// Person holds all personal information for an account holder
 type Person struct {
-	Birth          time.Time   `protobuf:"bytes,1,opt,name=birth,casttype=time.Time" json:"birth"`
-	Death          *time.Time  `protobuf:"bytes,2,opt,name=death,casttype=time.Time" json:"death,omitempty"`
-	BirtdayParties []time.Time `protobuf:"bytes,3,rep,name=birtday_parties,casttype=time.Time" json:"birtday_parties"`
+	// The names of a person
+	Name *Person_Names `protobuf:"bytes,5,opt,name=name" json:"name,omitempty"`
+	// Any gender
+	Gender         Person_Gender `protobuf:"varint,4,opt,name=gender,proto3,enum=limbo.tests.Person_Gender" json:"gender,omitempty"`
+	Birth          time.Time     `protobuf:"bytes,1,opt,name=birth,casttype=time.Time" json:"birth"`
+	Death          *time.Time    `protobuf:"bytes,2,opt,name=death,casttype=time.Time" json:"death,omitempty"`
+	BirtdayParties []time.Time   `protobuf:"bytes,3,rep,name=birtday_parties,casttype=time.Time" json:"birtday_parties"`
+	// A oneof comment
+	//
+	// Types that are valid to be assigned to FooBar:
+	//	*Person_Foo
+	//	*Person_Bar
+	FooBar isPerson_FooBar `protobuf_oneof:"foo_bar"`
 }
 
 func (m *Person) Reset()         { *m = Person{} }
 func (m *Person) String() string { return proto.CompactTextString(m) }
 func (*Person) ProtoMessage()    {}
+
+type isPerson_FooBar interface {
+	isPerson_FooBar()
+	MarshalTo([]byte) (int, error)
+	Size() int
+}
+
+type Person_Foo struct {
+	Foo string `protobuf:"bytes,6,opt,name=foo,proto3,oneof"`
+}
+type Person_Bar struct {
+	Bar string `protobuf:"bytes,7,opt,name=bar,proto3,oneof"`
+}
+
+func (*Person_Foo) isPerson_FooBar() {}
+func (*Person_Bar) isPerson_FooBar() {}
+
+func (m *Person) GetFooBar() isPerson_FooBar {
+	if m != nil {
+		return m.FooBar
+	}
+	return nil
+}
+
+func (m *Person) GetName() *Person_Names {
+	if m != nil {
+		return m.Name
+	}
+	return nil
+}
 
 func (m *Person) GetBirth() time.Time {
 	if m != nil {
@@ -59,11 +135,203 @@ func (m *Person) GetBirtdayParties() []time.Time {
 	return nil
 }
 
-func init() {
-	proto.RegisterType((*Person)(nil), "limbo.tests.Person")
+func (m *Person) GetFoo() string {
+	if x, ok := m.GetFooBar().(*Person_Foo); ok {
+		return x.Foo
+	}
+	return ""
 }
 
+func (m *Person) GetBar() string {
+	if x, ok := m.GetFooBar().(*Person_Bar); ok {
+		return x.Bar
+	}
+	return ""
+}
+
+// XXX_OneofFuncs is for the internal use of the proto package.
+func (*Person) XXX_OneofFuncs() (func(msg proto.Message, b *proto.Buffer) error, func(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error), []interface{}) {
+	return _Person_OneofMarshaler, _Person_OneofUnmarshaler, []interface{}{
+		(*Person_Foo)(nil),
+		(*Person_Bar)(nil),
+	}
+}
+
+func _Person_OneofMarshaler(msg proto.Message, b *proto.Buffer) error {
+	m := msg.(*Person)
+	// foo_bar
+	switch x := m.FooBar.(type) {
+	case *Person_Foo:
+		_ = b.EncodeVarint(6<<3 | proto.WireBytes)
+		_ = b.EncodeStringBytes(x.Foo)
+	case *Person_Bar:
+		_ = b.EncodeVarint(7<<3 | proto.WireBytes)
+		_ = b.EncodeStringBytes(x.Bar)
+	case nil:
+	default:
+		return fmt.Errorf("Person.FooBar has unexpected type %T", x)
+	}
+	return nil
+}
+
+func _Person_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffer) (bool, error) {
+	m := msg.(*Person)
+	switch tag {
+	case 6: // foo_bar.foo
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeStringBytes()
+		m.FooBar = &Person_Foo{x}
+		return true, err
+	case 7: // foo_bar.bar
+		if wire != proto.WireBytes {
+			return true, proto.ErrInternalBadWireType
+		}
+		x, err := b.DecodeStringBytes()
+		m.FooBar = &Person_Bar{x}
+		return true, err
+	default:
+		return false, nil
+	}
+}
+
+type Person_Names struct {
+	First    string `protobuf:"bytes,1,opt,name=first,proto3" json:"first,omitempty"`
+	Middle   string `protobuf:"bytes,2,opt,name=middle,proto3" json:"middle,omitempty"`
+	Last     string `protobuf:"bytes,3,opt,name=last,proto3" json:"last,omitempty"`
+	Nickname string `protobuf:"bytes,4,opt,name=nickname,proto3" json:"nickname,omitempty"`
+}
+
+func (m *Person_Names) Reset()         { *m = Person_Names{} }
+func (m *Person_Names) String() string { return proto.CompactTextString(m) }
+func (*Person_Names) ProtoMessage()    {}
+
 var _ google_protobuf.Timestamp
+var jsonSchemaDefs9 = []github_com_limbo_services_core_runtime_limbo.SchemaDefinition{
+	{
+		Name: "limbo.tests.Person",
+		Dependencies: []string{
+			"google.protobuf.Timestamp",
+			"limbo.tests.Person.Gender",
+			"limbo.tests.Person.Names",
+		},
+		Definition: []byte(`{
+			"allOf": [
+				{
+					"properties": {
+						"birtday_parties": {
+							"items": {
+								"$ref": "google.protobuf.Timestamp"
+							},
+							"type": "array"
+						},
+						"birth": {
+							"$ref": "google.protobuf.Timestamp"
+						},
+						"death": {
+							"$ref": "google.protobuf.Timestamp"
+						},
+						"gender": {
+							"$ref": "limbo.tests.Person.Gender",
+							"description": "Any gender"
+						},
+						"name": {
+							"$ref": "limbo.tests.Person.Names",
+							"description": "The names of a person"
+						}
+					},
+					"required": [
+						"birth"
+					],
+					"type": "object"
+				},
+				{
+					"description": "A oneof comment",
+					"oneOf": [
+						{
+							"properties": {
+								"foo": {
+									"description": "a field comment for foo",
+									"type": "string"
+								}
+							},
+							"required": [
+								"foo"
+							],
+							"type": "object"
+						},
+						{
+							"properties": {
+								"bar": {
+									"description": "a field comment for bar",
+									"type": "string"
+								}
+							},
+							"required": [
+								"bar"
+							],
+							"type": "object"
+						}
+					]
+				}
+			],
+			"description": "Person holds all personal information for an account holder",
+			"id": "limbo.tests.Person",
+			"title": "Person",
+			"type": "object"
+		}`),
+	},
+	{
+		Name:         "limbo.tests.Person.Names",
+		Dependencies: []string{},
+		Definition: []byte(`{
+			"id": "limbo.tests.Person.Names",
+			"properties": {
+				"first": {
+					"type": "string"
+				},
+				"last": {
+					"type": "string"
+				},
+				"middle": {
+					"type": "string"
+				},
+				"nickname": {
+					"type": "string"
+				}
+			},
+			"required": [
+				"first",
+				"last"
+			],
+			"title": "Names",
+			"type": "object"
+		}`),
+	},
+	{
+		Name:         "limbo.tests.Person.Gender",
+		Dependencies: []string{},
+		Definition: []byte(`{
+			"enum": [
+				0,
+				"Any",
+				1,
+				"Female",
+				2,
+				"Male",
+				3,
+				"TransFemale",
+				4,
+				"TransMale",
+				5,
+				"Other"
+			],
+			"id": "limbo.tests.Person.Gender",
+			"title": "Gender"
+		}`),
+	},
+}
 
 func (m *Person) Marshal() (data []byte, err error) {
 	size := m.Size()
@@ -110,6 +378,86 @@ func (m *Person) MarshalTo(data []byte) (int, error) {
 			i += n
 		}
 	}
+	if m.Gender != 0 {
+		data[i] = 0x20
+		i++
+		i = encodeVarintExample(data, i, uint64(m.Gender))
+	}
+	if m.Name != nil {
+		data[i] = 0x2a
+		i++
+		i = encodeVarintExample(data, i, uint64(m.Name.Size()))
+		n3, err := m.Name.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += n3
+	}
+	if m.FooBar != nil {
+		nn4, err := m.FooBar.MarshalTo(data[i:])
+		if err != nil {
+			return 0, err
+		}
+		i += nn4
+	}
+	return i, nil
+}
+
+func (m *Person_Foo) MarshalTo(data []byte) (int, error) {
+	i := 0
+	data[i] = 0x32
+	i++
+	i = encodeVarintExample(data, i, uint64(len(m.Foo)))
+	i += copy(data[i:], m.Foo)
+	return i, nil
+}
+func (m *Person_Bar) MarshalTo(data []byte) (int, error) {
+	i := 0
+	data[i] = 0x3a
+	i++
+	i = encodeVarintExample(data, i, uint64(len(m.Bar)))
+	i += copy(data[i:], m.Bar)
+	return i, nil
+}
+func (m *Person_Names) Marshal() (data []byte, err error) {
+	size := m.Size()
+	data = make([]byte, size)
+	n, err := m.MarshalTo(data)
+	if err != nil {
+		return nil, err
+	}
+	return data[:n], nil
+}
+
+func (m *Person_Names) MarshalTo(data []byte) (int, error) {
+	var i int
+	_ = i
+	var l int
+	_ = l
+	if len(m.First) > 0 {
+		data[i] = 0xa
+		i++
+		i = encodeVarintExample(data, i, uint64(len(m.First)))
+		i += copy(data[i:], m.First)
+	}
+	if len(m.Middle) > 0 {
+		data[i] = 0x12
+		i++
+		i = encodeVarintExample(data, i, uint64(len(m.Middle)))
+		i += copy(data[i:], m.Middle)
+	}
+	if len(m.Last) > 0 {
+		data[i] = 0x1a
+		i++
+		i = encodeVarintExample(data, i, uint64(len(m.Last)))
+		i += copy(data[i:], m.Last)
+	}
+	if len(m.Nickname) > 0 {
+		data[i] = 0x22
+		i++
+		i = encodeVarintExample(data, i, uint64(len(m.Nickname)))
+		i += copy(data[i:], m.Nickname)
+	}
 	return i, nil
 }
 
@@ -154,6 +502,52 @@ func (m *Person) Size() (n int) {
 			l = ((*google_protobuf.Timestamp)(&e)).Size()
 			n += 1 + l + sovExample(uint64(l))
 		}
+	}
+	if m.Gender != 0 {
+		n += 1 + sovExample(uint64(m.Gender))
+	}
+	if m.Name != nil {
+		l = m.Name.Size()
+		n += 1 + l + sovExample(uint64(l))
+	}
+	if m.FooBar != nil {
+		n += m.FooBar.Size()
+	}
+	return n
+}
+
+func (m *Person_Foo) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Foo)
+	n += 1 + l + sovExample(uint64(l))
+	return n
+}
+func (m *Person_Bar) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.Bar)
+	n += 1 + l + sovExample(uint64(l))
+	return n
+}
+func (m *Person_Names) Size() (n int) {
+	var l int
+	_ = l
+	l = len(m.First)
+	if l > 0 {
+		n += 1 + l + sovExample(uint64(l))
+	}
+	l = len(m.Middle)
+	if l > 0 {
+		n += 1 + l + sovExample(uint64(l))
+	}
+	l = len(m.Last)
+	if l > 0 {
+		n += 1 + l + sovExample(uint64(l))
+	}
+	l = len(m.Nickname)
+	if l > 0 {
+		n += 1 + l + sovExample(uint64(l))
 	}
 	return n
 }
@@ -294,6 +688,282 @@ func (m *Person) Unmarshal(data []byte) error {
 				return err
 			}
 			iNdEx = postIndex
+		case 4:
+			if wireType != 0 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Gender", wireType)
+			}
+			m.Gender = 0
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowExample
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				m.Gender |= (Person_Gender(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+		case 5:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Name", wireType)
+			}
+			var msglen int
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowExample
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				msglen |= (int(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			if msglen < 0 {
+				return ErrInvalidLengthExample
+			}
+			postIndex := iNdEx + msglen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			if m.Name == nil {
+				m.Name = &Person_Names{}
+			}
+			if err := m.Name.Unmarshal(data[iNdEx:postIndex]); err != nil {
+				return err
+			}
+			iNdEx = postIndex
+		case 6:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Foo", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowExample
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthExample
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FooBar = &Person_Foo{string(data[iNdEx:postIndex])}
+			iNdEx = postIndex
+		case 7:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Bar", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowExample
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthExample
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.FooBar = &Person_Bar{string(data[iNdEx:postIndex])}
+			iNdEx = postIndex
+		default:
+			iNdEx = preIndex
+			skippy, err := skipExample(data[iNdEx:])
+			if err != nil {
+				return err
+			}
+			if skippy < 0 {
+				return ErrInvalidLengthExample
+			}
+			if (iNdEx + skippy) > l {
+				return io.ErrUnexpectedEOF
+			}
+			iNdEx += skippy
+		}
+	}
+
+	if iNdEx > l {
+		return io.ErrUnexpectedEOF
+	}
+	return nil
+}
+func (m *Person_Names) Unmarshal(data []byte) error {
+	l := len(data)
+	iNdEx := 0
+	for iNdEx < l {
+		preIndex := iNdEx
+		var wire uint64
+		for shift := uint(0); ; shift += 7 {
+			if shift >= 64 {
+				return ErrIntOverflowExample
+			}
+			if iNdEx >= l {
+				return io.ErrUnexpectedEOF
+			}
+			b := data[iNdEx]
+			iNdEx++
+			wire |= (uint64(b) & 0x7F) << shift
+			if b < 0x80 {
+				break
+			}
+		}
+		fieldNum := int32(wire >> 3)
+		wireType := int(wire & 0x7)
+		if wireType == 4 {
+			return fmt.Errorf("proto: Names: wiretype end group for non-group")
+		}
+		if fieldNum <= 0 {
+			return fmt.Errorf("proto: Names: illegal tag %d (wire type %d)", fieldNum, wire)
+		}
+		switch fieldNum {
+		case 1:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field First", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowExample
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthExample
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.First = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 2:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Middle", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowExample
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthExample
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Middle = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 3:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Last", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowExample
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthExample
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Last = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
+		case 4:
+			if wireType != 2 {
+				return fmt.Errorf("proto: wrong wireType = %d for field Nickname", wireType)
+			}
+			var stringLen uint64
+			for shift := uint(0); ; shift += 7 {
+				if shift >= 64 {
+					return ErrIntOverflowExample
+				}
+				if iNdEx >= l {
+					return io.ErrUnexpectedEOF
+				}
+				b := data[iNdEx]
+				iNdEx++
+				stringLen |= (uint64(b) & 0x7F) << shift
+				if b < 0x80 {
+					break
+				}
+			}
+			intStringLen := int(stringLen)
+			if intStringLen < 0 {
+				return ErrInvalidLengthExample
+			}
+			postIndex := iNdEx + intStringLen
+			if postIndex > l {
+				return io.ErrUnexpectedEOF
+			}
+			m.Nickname = string(data[iNdEx:postIndex])
+			iNdEx = postIndex
 		default:
 			iNdEx = preIndex
 			skippy, err := skipExample(data[iNdEx:])
@@ -419,3 +1089,10 @@ var (
 	ErrInvalidLengthExample = fmt.Errorf("proto: negative length found during unmarshaling")
 	ErrIntOverflowExample   = fmt.Errorf("proto: integer overflow")
 )
+
+func init() {
+	proto.RegisterType((*Person)(nil), "limbo.tests.Person")
+	proto.RegisterType((*Person_Names)(nil), "limbo.tests.Person.Names")
+	github_com_limbo_services_core_runtime_limbo.RegisterSchemaDefinitions(jsonSchemaDefs9)
+	proto.RegisterEnum("limbo.tests.Person_Gender", Person_Gender_name, Person_Gender_value)
+}

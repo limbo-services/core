@@ -3,8 +3,8 @@ package svcpanic
 import (
 	"strings"
 
-	pb "github.com/gogo/protobuf/protoc-gen-gogo/descriptor"
-	"github.com/gogo/protobuf/protoc-gen-gogo/generator"
+	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
+	"github.com/limbo-services/protobuf/protoc-gen-gogo/generator"
 )
 
 func init() {
@@ -108,7 +108,6 @@ func (g *svcpanic) generateService(file *generator.FileDescriptor, service *pb.S
 		g.P(`}`)
 		g.P()
 	}
-
 }
 
 // generateServerSignature returns the server-side signature for a method.
