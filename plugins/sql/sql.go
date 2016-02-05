@@ -25,6 +25,7 @@ type gensql struct {
 	imports    generator.PluginImports
 	sqlPkg     generator.Single
 	runtimePkg generator.Single
+	timePkg    generator.Single
 
 	models map[string]*generator.Descriptor
 }
@@ -60,6 +61,7 @@ func (g *gensql) Generate(file *generator.FileDescriptor) {
 	g.imports = imp
 	g.sqlPkg = imp.NewImport("database/sql")
 	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
+	g.timePkg = imp.NewImport("time")
 
 	var models []*generator.Descriptor
 
@@ -521,7 +523,9 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		case pb.FieldDescriptorProto_TYPE_STRING:
 			g.P(`b`, i, ` `, g.sqlPkg.Use(), `.NullString`)
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+			if field.GetTypeName() == ".google.protobuf.Timestamp" {
+				g.P(`b`, i, ` `, g.timePkg.Use(), `.Time`)
+			} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
 				g.P(`b`, i, ` Null`, g.typeName(field.GetTypeName()))
 			} else {
 				g.P(`b`, i, ` []byte`)
@@ -559,7 +563,9 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 
 		switch field.GetType() {
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+			if field.GetTypeName() == ".google.protobuf.Timestamp" {
+				valid = "true"
+			} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
 				valid = fmt.Sprintf(`b%d.Valid`, i)
 			} else {
 				valid = fmt.Sprintf(`b%d != nil`, i)
@@ -602,7 +608,17 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		case pb.FieldDescriptorProto_TYPE_STRING:
 			g.P(dst, `.`, fieldName, ` = b`, i, `.String`)
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+			if field.GetTypeName() == ".google.protobuf.Timestamp" {
+				if gogoproto.IsNullable(field) {
+					g.P(`if !b.IsZero() {`)
+					g.P(dst, `.`, fieldName, ` = &b`, i)
+					g.P(`} else {`)
+					g.P(dst, `.`, fieldName, ` = nil`)
+					g.P(`}`)
+				} else {
+					g.P(dst, `.`, fieldName, ` = b`, i)
+				}
+			} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
 				if gogoproto.IsNullable(field) {
 					g.P(dst, `.`, fieldName, ` = &b`, i, `.`, g.typeName(field.GetTypeName()))
 				} else {
