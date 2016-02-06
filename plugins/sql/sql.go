@@ -26,6 +26,7 @@ type gensql struct {
 	sqlPkg     generator.Single
 	runtimePkg generator.Single
 	timePkg    generator.Single
+	mysqlPkg   generator.Single
 
 	models map[string]*generator.Descriptor
 }
@@ -62,6 +63,7 @@ func (g *gensql) Generate(file *generator.FileDescriptor) {
 	g.sqlPkg = imp.NewImport("database/sql")
 	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
 	g.timePkg = imp.NewImport("time")
+	g.mysqlPkg = imp.NewImport("github.com/go-sql-driver/mysql")
 
 	var models []*generator.Descriptor
 
@@ -524,7 +526,7 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 			g.P(`b`, i, ` `, g.sqlPkg.Use(), `.NullString`)
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
 			if field.GetTypeName() == ".google.protobuf.Timestamp" {
-				g.P(`b`, i, ` `, g.timePkg.Use(), `.Time`)
+				g.P(`b`, i, ` `, g.mysqlPkg.Use(), `.NullTime`)
 			} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
 				g.P(`b`, i, ` Null`, g.typeName(field.GetTypeName()))
 			} else {
@@ -532,7 +534,7 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 				g.P(`m`, i, ` `, g.typeName(field.GetTypeName()))
 			}
 		default:
-			panic("unsupoorted type: " + field.GetType().String())
+			panic("unsuported type: " + field.GetType().String())
 		}
 	}
 	for i, join := range scanner.Join {
@@ -564,7 +566,7 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		switch field.GetType() {
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
 			if field.GetTypeName() == ".google.protobuf.Timestamp" {
-				valid = "true"
+				valid = fmt.Sprintf(`b%d.Valid`, i)
 			} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
 				valid = fmt.Sprintf(`b%d.Valid`, i)
 			} else {
@@ -610,13 +612,9 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
 			if field.GetTypeName() == ".google.protobuf.Timestamp" {
 				if gogoproto.IsNullable(field) {
-					g.P(`if !b.IsZero() {`)
-					g.P(dst, `.`, fieldName, ` = &b`, i)
-					g.P(`} else {`)
-					g.P(dst, `.`, fieldName, ` = nil`)
-					g.P(`}`)
+					g.P(dst, `.`, fieldName, ` = &b`, i, `.Time`)
 				} else {
-					g.P(dst, `.`, fieldName, ` = b`, i)
+					g.P(dst, `.`, fieldName, ` = b`, i, `.Time`)
 				}
 			} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
 				if gogoproto.IsNullable(field) {
