@@ -25,6 +25,7 @@ type svcauth struct {
 
 	imports    generator.PluginImports
 	contextPkg generator.Single
+	runtimePkg generator.Single
 
 	messages map[string]*generator.Descriptor
 }
@@ -74,6 +75,7 @@ func (g *svcauth) Generate(file *generator.FileDescriptor) {
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
 	g.contextPkg = imp.NewImport("golang.org/x/net/context")
+	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
 
 	for i, service := range file.FileDescriptorProto.Service {
 		g.generateService(file, service, i)
@@ -124,7 +126,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		method, authnInfo := authMethod.method, authMethod.Authn
 
 		inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
-		var callerType, _ = g.lookupMessageType(inputType, authnInfo.Caller)
+		var callerType = g.lookupMessageType(inputType, authnInfo.Caller)
 
 		if !seenCallerTypes[callerType] {
 			seenCallerTypes[callerType] = true
@@ -146,6 +148,12 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 	}
 	g.P(`}`)
 	g.P("")
+
+	for _, ctx := range authzContexts {
+		for _, scope := range ctx.Scopes {
+			g.gen.AddInitf("%s.RegisterAuthScope(%q, %q, %q, %q)", g.runtimePkg.Use(), file.GetPackage(), ctx.CallerType, ctx.ContextType, scope)
+		}
+	}
 
 	// Server handler implementations.
 	var rules = map[string]int{}
@@ -190,7 +198,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		method, authnInfo, authzInfo := authMethod.method, authMethod.Authn, authMethod.Authz
 
 		inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
-		var callerType, _ = g.lookupMessageType(inputType, authnInfo.Caller)
+		var callerType = g.lookupMessageType(inputType, authnInfo.Caller)
 
 		g.P("func (s *", serverType, ") ", g.generateServerSignature(servName, method), " {")
 		g.P("var (")
@@ -199,7 +207,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		}
 		g.P(`caller `, callerType)
 		if authzInfo != nil && authzInfo.Context != "" {
-			var contextType, _ = g.lookupMessageType(inputType, authzInfo.Context)
+			var contextType = g.lookupMessageType(inputType, authzInfo.Context)
 			g.P(`context *`, contextType)
 		}
 		g.P(")")
@@ -218,7 +226,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 			var methodName string
 			var args string
 			if authzInfo.Context != "" {
-				var contextType, _ = g.lookupMessageType(inputType, authzInfo.Context)
+				var contextType = g.lookupMessageType(inputType, authzInfo.Context)
 				methodName = `Authorize` + callerType + `For` + contextType
 				args = "&caller, context"
 				g.getMessage(inputType, authzInfo.Context, "input", "context", true)
@@ -240,30 +248,6 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P("}")
 		g.P()
 	}
-
-	// {
-	// 	var desc = AuthDescriptionSet{}
-	//
-	// 	for _, m := range methods {
-	// 		desc.Methods = append(desc.Methods, &AuthDescription{
-	// 			Method: m.Name,
-	// 			Authn:  m.Authn,
-	// 			Authz:  m.Authz,
-	// 		})
-	// 	}
-	//
-	// 	m := jsonpb.Marshaler{}
-	// 	data, err := m.MarshalToString(&desc)
-	// 	if err != nil {
-	// 		g.gen.Error(err)
-	// 	}
-	//
-	// 	g.gen.Response.File = append(g.gen.Response.File, &plugin.CodeGeneratorResponse_File{
-	// 		Name:    proto.String(authSpecFileName(*file.Name)),
-	// 		Content: proto.String(data),
-	// 	})
-	// }
-
 }
 
 // generateServerSignature returns the server-side signature for a method.
@@ -405,7 +389,7 @@ func authSpecFileName(name string) string {
 	return name + ".auth.json"
 }
 
-func (g *svcauth) lookupMessageType(inputType *generator.Descriptor, path string) (typeName string, isPtr bool) {
+func (g *svcauth) lookupMessageType(inputType *generator.Descriptor, path string) (typeName string) {
 	partType := inputType
 	parts := strings.Split(path, ".")
 	lastIdx := len(parts) - 1
@@ -419,11 +403,7 @@ func (g *svcauth) lookupMessageType(inputType *generator.Descriptor, path string
 		}
 
 		if lastIdx == i {
-			if gogoproto.IsNullable(field) {
-				return g.typeName(field.GetTypeName()), true
-			} else {
-				return g.typeName(field.GetTypeName()), false
-			}
+			return g.typeName(field.GetTypeName())
 		}
 
 		typeName := strings.TrimPrefix(field.GetTypeName(), ".")
@@ -567,11 +547,11 @@ func (g *svcauth) lookupAuthzContexts(methods []*authMethod) []*authzContext {
 		}
 
 		inputType, _ = g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
-		callerType, _ = g.lookupMessageType(inputType, authzInfo.Caller)
+		callerType = g.lookupMessageType(inputType, authzInfo.Caller)
 		id = callerType
 
 		if authzInfo.Context != "" {
-			contextType, _ = g.lookupMessageType(inputType, authzInfo.Context)
+			contextType = g.lookupMessageType(inputType, authzInfo.Context)
 			id = callerType + "/" + contextType
 		}
 
