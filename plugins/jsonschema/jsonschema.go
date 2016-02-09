@@ -355,6 +355,9 @@ func (g *jsonschema) fieldToSchema(field *pb.FieldDescriptorProto) (map[string]i
 		if f := limbo.GetFormat(field); f != "" {
 			def["format"] = f
 		}
+		if p, ok := limbo.GetPattern(field); ok {
+			def["pattern"] = p
+		}
 
 	case pb.FieldDescriptorProto_TYPE_BYTES:
 		def = map[string]interface{}{

@@ -11,7 +11,6 @@ import (
 
 	"github.com/limbo-services/protobuf/jsonpb"
 	"github.com/limbo-services/protobuf/proto"
-	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
@@ -398,16 +397,4 @@ func httpStatusFromCode(code codes.Code) int {
 
 	log.Errorf("Unknown GRPC error code: %v", code)
 	return http.StatusInternalServerError
-}
-
-func GetFormat(field *pb.FieldDescriptorProto) string {
-	if field == nil || field.Options == nil {
-		return ""
-	}
-	v, _ := proto.GetExtension(field.Options, E_Format)
-	s, _ := v.(*string)
-	if s == nil {
-		return ""
-	}
-	return *s
 }

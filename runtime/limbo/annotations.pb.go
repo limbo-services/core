@@ -97,6 +97,14 @@ var E_Required = &proto.ExtensionDesc{
 	Tag:           "varint,51304,opt,name=required",
 }
 
+var E_Pattern = &proto.ExtensionDesc{
+	ExtendedType:  (*google_protobuf.FieldOptions)(nil),
+	ExtensionType: (*string)(nil),
+	Field:         51305,
+	Name:          "limbo.pattern",
+	Tag:           "bytes,51305,opt,name=pattern",
+}
+
 var E_DefaultAuthn = &proto.ExtensionDesc{
 	ExtendedType:  (*google_protobuf.ServiceOptions)(nil),
 	ExtensionType: (*AuthnRule)(nil),
@@ -146,6 +154,7 @@ func init() {
 	proto.RegisterExtension(E_HideInSwagger)
 	proto.RegisterExtension(E_Format)
 	proto.RegisterExtension(E_Required)
+	proto.RegisterExtension(E_Pattern)
 	proto.RegisterExtension(E_DefaultAuthn)
 	proto.RegisterExtension(E_DefaultAuthz)
 	proto.RegisterExtension(E_Authn)

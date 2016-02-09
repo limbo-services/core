@@ -24,6 +24,7 @@ extend google.protobuf.FieldOptions {
   optional bool hideInSwagger      = 51302;
   optional string format           = 51303;
   optional bool required           = 51304;
+  optional string pattern          = 51305;
 }
 
 extend google.protobuf.ServiceOptions {

@@ -88,6 +88,9 @@ func fieldToSchema(gen *generator.Generator, field *pb.FieldDescriptorProto) int
 		if f := GetFormat(field); f != "" {
 			s["format"] = f
 		}
+		if p, ok := GetPattern(field); ok {
+			s["pattern"] = p
+		}
 		return s
 
 	case pb.FieldDescriptorProto_TYPE_BYTES:

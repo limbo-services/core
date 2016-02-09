@@ -666,6 +666,7 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 
 	g.P(`type `, message.Name, `StmtBuilder interface {`)
 	g.P(`Prepare(scanner string, query string) `, message.Name, `Stmt`)
+	g.P(`PrepareExecer(query string) `, message.Name, `Execer`)
 	g.P(`Err() error`)
 	g.P(`}`)
 
@@ -674,6 +675,12 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`Query(args ... interface{}) (`, message.Name, `Rows, error)`)
 	g.P(`SelectSlice(dst []*`, message.Name, `, args ... interface{}) ([]*`, message.Name, `, error)`)
 	g.P(`SelectMessageSlice(dst []interface{}, args ... interface{}) ([]interface{}, error)`)
+	g.P(`ForTx(tx *`, g.sqlPkg.Use(), `.Tx) `, message.Name, `Stmt`)
+	g.P(`}`)
+
+	g.P(`type `, message.Name, `Execer interface {`)
+	g.P(`Exec(args ... interface{}) (`, g.sqlPkg.Use(), `.Result, error)`)
+	g.P(`ForTx(tx *`, g.sqlPkg.Use(), `.Tx) `, message.Name, `Execer`)
 	g.P(`}`)
 
 	g.P(`type `, message.Name, `Row interface {`)
@@ -695,6 +702,10 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`type `, unexport(*message.Name), `Stmt struct {`)
 	g.P(`stmt *`, g.sqlPkg.Use(), `.Stmt`)
 	g.P(`scanner func(func(...interface{}) error, *`, message.Name, `) error`)
+	g.P(`}`)
+
+	g.P(`type `, unexport(*message.Name), `Execer struct {`)
+	g.P(`stmt *`, g.sqlPkg.Use(), `.Stmt`)
 	g.P(`}`)
 
 	g.P(`type `, unexport(*message.Name), `Row struct {`)
@@ -731,6 +742,13 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`stmt, err := b.db.Prepare(`, g.runtimePkg.Use(), `.CleanSQL(query))`)
 	g.P(`if err != nil { if b.err == nil { b.err = err } }`)
 	g.P(`return &`, unexport(*message.Name), `Stmt{stmt: stmt, scanner: scannerFunc}`)
+	g.P(`}`)
+
+	g.P(`func (b *`, unexport(*message.Name), `StmtBuilder) PrepareExecer( query string) (`, message.Name, `Execer) {`)
+	g.P(`if b.err != nil { return nil }`)
+	g.P(`stmt, err := b.db.Prepare(`, g.runtimePkg.Use(), `.CleanSQL(query))`)
+	g.P(`if err != nil { if b.err == nil { b.err = err } }`)
+	g.P(`return &`, unexport(*message.Name), `Execer{stmt: stmt}`)
 	g.P(`}`)
 
 	g.P(`func (b *`, unexport(*message.Name), `StmtBuilder) Err() (error) {`)
@@ -776,6 +794,18 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`err = rows.Err()`)
 	g.P(`if err != nil { return nil, err }`)
 	g.P(`return dst, nil`)
+	g.P(`}`)
+
+	g.P(`func (s *`, unexport(*message.Name), `Stmt) ForTx(tx *`, g.sqlPkg.Use(), `.Tx) `, message.Name, `Stmt {`)
+	g.P(`return &`, unexport(*message.Name), `Stmt{stmt: tx.Stmt(s.stmt), scanner: s.scanner}`)
+	g.P(`}`)
+
+	g.P(`func (s *`, unexport(*message.Name), `Execer) Exec(args ... interface{}) (`, g.sqlPkg.Use(), `.Result, error) {`)
+	g.P(`return s.stmt.Exec(args...)`)
+	g.P(`}`)
+
+	g.P(`func (s *`, unexport(*message.Name), `Execer) ForTx(tx *`, g.sqlPkg.Use(), `.Tx) `, message.Name, `Execer {`)
+	g.P(`return &`, unexport(*message.Name), `Execer{stmt: tx.Stmt(s.stmt)}`)
 	g.P(`}`)
 
 	g.P(`func (r *`, unexport(*message.Name), `Row) Scan(out *`, message.Name, `) error {`)

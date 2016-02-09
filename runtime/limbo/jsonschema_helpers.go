@@ -37,3 +37,27 @@ func IsRequiredProperty(field *pb.FieldDescriptorProto) bool {
 	}
 	return false
 }
+
+func GetFormat(field *pb.FieldDescriptorProto) string {
+	if field == nil || field.Options == nil {
+		return ""
+	}
+	v, _ := proto.GetExtension(field.Options, E_Format)
+	s, _ := v.(*string)
+	if s == nil {
+		return ""
+	}
+	return *s
+}
+
+func GetPattern(field *pb.FieldDescriptorProto) (string, bool) {
+	if field == nil || field.Options == nil {
+		return "", false
+	}
+	v, _ := proto.GetExtension(field.Options, E_Pattern)
+	s, _ := v.(*string)
+	if s == nil {
+		return "", false
+	}
+	return *s, true
+}
