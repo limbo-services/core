@@ -121,16 +121,22 @@ func (g *validation) generateRequiredTest(msg *generator.Descriptor, field *pb.F
 func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto) {
 	fieldName := g.gen.GetFieldName(msg, field)
 
+	var casttyp = "value"
+	if gogoproto.IsCastType(field) {
+		prototyp := g.gen.TypeName(g.gen.ObjectNamed(field.GetTypeName()))
+		casttyp = "((*" + prototyp + ")(" + casttyp + "))"
+	}
+
 	if field.IsRepeated() {
 		g.P(`for idx, value :=range msg.`, fieldName, `{`)
 		if gogoproto.IsNullable(field) {
 			g.P(`if value != nil {`)
-			g.P(`if err := value.Validate(); err != nil {`)
+			g.P(`if err := `, casttyp, `.Validate(); err != nil {`)
 			g.P(`return `, g.errorsPkg.Use(), `.Trace(err)`)
 			g.P(`}`)
 			g.P(`}`)
 		} else {
-			g.P(`if err := value.Validate(); err != nil {`)
+			g.P(`if err := `, casttyp, `.Validate(); err != nil {`)
 			g.P(`return `, g.errorsPkg.Use(), `.Trace(err)`)
 			g.P(`}`)
 		}
@@ -140,7 +146,7 @@ func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb
 			g.P(`{`)
 			g.P(`value := msg.`, fieldName)
 			g.P(`if value != nil {`)
-			g.P(`if err := value.Validate(); err != nil {`)
+			g.P(`if err := `, casttyp, `.Validate(); err != nil {`)
 			g.P(`return `, g.errorsPkg.Use(), `.Trace(err)`)
 			g.P(`}`)
 			g.P(`}`)
@@ -148,7 +154,7 @@ func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb
 		} else {
 			g.P(`{`)
 			g.P(`value := &msg.`, fieldName)
-			g.P(`if err := value.Validate(); err != nil {`)
+			g.P(`if err := `, casttyp, `.Validate(); err != nil {`)
 			g.P(`return `, g.errorsPkg.Use(), `.Trace(err)`)
 			g.P(`}`)
 			g.P(`}`)
