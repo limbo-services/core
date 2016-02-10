@@ -25,6 +25,8 @@ extend google.protobuf.FieldOptions {
   optional string format           = 51303;
   optional bool required           = 51304;
   optional string pattern          = 51305;
+  optional uint32 minLength        = 51306;
+  optional uint32 maxLength        = 51307;
 }
 
 extend google.protobuf.ServiceOptions {

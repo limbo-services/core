@@ -38,16 +38,16 @@ func IsRequiredProperty(field *pb.FieldDescriptorProto) bool {
 	return false
 }
 
-func GetFormat(field *pb.FieldDescriptorProto) string {
+func GetFormat(field *pb.FieldDescriptorProto) (string, bool) {
 	if field == nil || field.Options == nil {
-		return ""
+		return "", false
 	}
 	v, _ := proto.GetExtension(field.Options, E_Format)
 	s, _ := v.(*string)
 	if s == nil {
-		return ""
+		return "", false
 	}
-	return *s
+	return *s, true
 }
 
 func GetPattern(field *pb.FieldDescriptorProto) (string, bool) {
@@ -58,6 +58,30 @@ func GetPattern(field *pb.FieldDescriptorProto) (string, bool) {
 	s, _ := v.(*string)
 	if s == nil {
 		return "", false
+	}
+	return *s, true
+}
+
+func GetMinLength(field *pb.FieldDescriptorProto) (uint32, bool) {
+	if field == nil || field.Options == nil {
+		return 0, false
+	}
+	v, _ := proto.GetExtension(field.Options, E_MinLength)
+	s, _ := v.(*uint32)
+	if s == nil {
+		return 0, false
+	}
+	return *s, true
+}
+
+func GetMaxLength(field *pb.FieldDescriptorProto) (uint32, bool) {
+	if field == nil || field.Options == nil {
+		return 0, false
+	}
+	v, _ := proto.GetExtension(field.Options, E_MaxLength)
+	s, _ := v.(*uint32)
+	if s == nil {
+		return 0, false
 	}
 	return *s, true
 }

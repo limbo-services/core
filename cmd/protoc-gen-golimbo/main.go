@@ -1,9 +1,9 @@
 package main
 
 import (
+	"github.com/limbo-services/core/generator"
 	"github.com/limbo-services/protobuf/vanity"
 	"github.com/limbo-services/protobuf/vanity/command"
-	"github.com/limbo-services/core/generator"
 
 	_ "github.com/limbo-services/core/plugins/builtintypes"
 	_ "github.com/limbo-services/core/plugins/jsonschema"
@@ -11,6 +11,7 @@ import (
 	_ "github.com/limbo-services/core/plugins/svcauth"
 	_ "github.com/limbo-services/core/plugins/svchttp"
 	_ "github.com/limbo-services/core/plugins/svcpanic"
+	_ "github.com/limbo-services/core/plugins/validation"
 )
 
 func main() {

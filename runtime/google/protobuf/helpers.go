@@ -2,6 +2,10 @@ package protobuf
 
 import "time"
 
+func (t *Timestamp) Validate() error {
+	return nil
+}
+
 func (t *Timestamp) extract() (sec int64, nsec int32) {
 	if t == nil {
 		return 0, 0

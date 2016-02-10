@@ -352,11 +352,17 @@ func (g *jsonschema) fieldToSchema(field *pb.FieldDescriptorProto) (map[string]i
 		def = map[string]interface{}{
 			"type": "string",
 		}
-		if f := limbo.GetFormat(field); f != "" {
-			def["format"] = f
+		if x, ok := limbo.GetFormat(field); ok {
+			def["format"] = x
 		}
-		if p, ok := limbo.GetPattern(field); ok {
-			def["pattern"] = p
+		if x, ok := limbo.GetPattern(field); ok {
+			def["pattern"] = x
+		}
+		if x, ok := limbo.GetMinLength(field); ok {
+			def["minLength"] = x
+		}
+		if x, ok := limbo.GetMaxLength(field); ok {
+			def["maxLength"] = x
 		}
 
 	case pb.FieldDescriptorProto_TYPE_BYTES:

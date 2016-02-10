@@ -85,11 +85,17 @@ func fieldToSchema(gen *generator.Generator, field *pb.FieldDescriptorProto) int
 		s := map[string]interface{}{
 			"type": "string",
 		}
-		if f := GetFormat(field); f != "" {
-			s["format"] = f
+		if x, ok := GetFormat(field); ok {
+			s["format"] = x
 		}
-		if p, ok := GetPattern(field); ok {
-			s["pattern"] = p
+		if x, ok := GetPattern(field); ok {
+			s["pattern"] = x
+		}
+		if x, ok := GetMinLength(field); ok {
+			s["minLength"] = x
+		}
+		if x, ok := GetMaxLength(field); ok {
+			s["maxLength"] = x
 		}
 		return s
 

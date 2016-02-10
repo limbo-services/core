@@ -33,6 +33,7 @@ func main() {
 		"grpc",
 		"builtintypes",
 		"jsonschema",
+		"validation",
 		enabled("svcpanic", svcpanic, true),
 		enabled("svcauth", svcauth, true),
 		enabled("svchttp", svchttp, true),
