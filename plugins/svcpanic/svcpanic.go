@@ -1,6 +1,7 @@
 package svcpanic
 
 import (
+	"strconv"
 	"strings"
 
 	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
@@ -20,6 +21,7 @@ type svcpanic struct {
 	contextPkg generator.Single
 	grpcPkg    generator.Single
 	runtimePkg generator.Single
+	tracePkg   generator.Single
 }
 
 // Name returns the name of this plugin, "grpc".
@@ -61,6 +63,7 @@ func (g *svcpanic) Generate(file *generator.FileDescriptor) {
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
 	g.contextPkg = imp.NewImport("golang.org/x/net/context")
+	g.tracePkg = imp.NewImport("github.com/limbo-services/trace")
 	g.grpcPkg = imp.NewImport("google.golang.org/grpc")
 	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
 
@@ -102,11 +105,27 @@ func (g *svcpanic) generateService(file *generator.FileDescriptor, service *pb.S
 
 	// Server handler implementations.
 	for _, method := range service.Method {
-		g.P(`func (s *`, serverType, `) `, g.generateServerSignature(servName, method), ` {`)
-		g.P(`defer `, g.runtimePkg.Use(), `.RecoverPanic(&err, s.handler)`)
-		g.P(`return s.inner.`, g.generateServerCall(servName, method))
-		g.P(`}`)
-		g.P()
+		id := "/" + file.GetPackage() + "." + service.GetName() + "/" + method.GetName() + "/root"
+
+		if method.GetServerStreaming() || method.GetClientStreaming() {
+			g.P(`func (s *`, serverType, `) `, g.generateServerSignature(servName, method), ` {`)
+			g.P(`span, ctx := `, g.tracePkg.Use(), `.New(stream.Context(), `, strconv.Quote(id), `, `, g.tracePkg.Use(), `.WithPanicGuard)`)
+			g.P(`defer span.Close()`)
+			g.P(`rawStream := stream.(*`, unexport(servName), generator.CamelCase(method.GetName()), `Server)`)
+			g.P(`rawStream.ServerStream = `, g.runtimePkg.Use(), `.WrapServerSteamWithContext(rawStream.ServerStream, ctx)`)
+			g.P(`defer `, g.runtimePkg.Use(), `.RecoverPanic(&err, s.handler)`)
+			g.P(`return s.inner.`, g.generateServerCall(servName, method))
+			g.P(`}`)
+			g.P()
+		} else {
+			g.P(`func (s *`, serverType, `) `, g.generateServerSignature(servName, method), ` {`)
+			g.P(`span, ctx := `, g.tracePkg.Use(), `.New(ctx, `, strconv.Quote(id), `, `, g.tracePkg.Use(), `.WithPanicGuard)`)
+			g.P(`defer span.Close()`)
+			g.P(`defer `, g.runtimePkg.Use(), `.RecoverPanic(&err, s.handler)`)
+			g.P(`return s.inner.`, g.generateServerCall(servName, method))
+			g.P(`}`)
+			g.P()
+		}
 	}
 }
 
