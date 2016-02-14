@@ -11,9 +11,8 @@ import (
 )
 
 var (
-	svcpanic = flag.Bool("panic", true, "Disable panic generator plugin")
-	svcauth  = flag.Bool("auth", true, "Disable auth generator plugin")
-	svchttp  = flag.Bool("http", true, "Disable http generator plugin")
+	svcauth = flag.Bool("auth", true, "Disable auth generator plugin")
+	svchttp = flag.Bool("http", true, "Disable http generator plugin")
 )
 
 func main() {
@@ -34,7 +33,7 @@ func main() {
 		"builtintypes",
 		"jsonschema",
 		"validation",
-		enabled("svcpanic", svcpanic, true),
+		"middelware",
 		enabled("svcauth", svcauth, true),
 		enabled("svchttp", svchttp, true),
 		"sql",

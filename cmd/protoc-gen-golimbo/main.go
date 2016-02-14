@@ -10,7 +10,7 @@ import (
 	_ "github.com/limbo-services/core/plugins/sql"
 	_ "github.com/limbo-services/core/plugins/svcauth"
 	_ "github.com/limbo-services/core/plugins/svchttp"
-	_ "github.com/limbo-services/core/plugins/svcpanic"
+	_ "github.com/limbo-services/core/plugins/svcmiddleware"
 	_ "github.com/limbo-services/core/plugins/validation"
 )
 
