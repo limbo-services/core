@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/limbo-services/protobuf/jsonpb"
 	"github.com/limbo-services/protobuf/proto"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
@@ -26,8 +25,7 @@ func RenderMessageJSON(w http.ResponseWriter, code int, msg proto.Message) {
 	w.Header().Set(ContentType, JSONType)
 	w.WriteHeader(code)
 
-	m := jsonpb.Marshaler{}
-	err := m.Marshal(w, msg)
+	err := json.NewEncoder(w).Encode(msg)
 	if err != nil {
 		log.WithError(err).Error("failed to marshal GRPC gateway response")
 	}
@@ -100,12 +98,11 @@ func (s *sseServerStream) Context() context.Context {
 func (s *sseServerStream) SendMsg(m interface{}) error {
 	var (
 		messageSent bool
-		marshaler   jsonpb.Marshaler
 	)
 
 	s.writeBuffer.Reset()
 	s.writeBuffer.WriteString("event: message\ndata: ")
-	err := marshaler.Marshal(&s.writeBuffer, m.(proto.Message))
+	err := json.NewEncoder(&s.writeBuffer).Encode(m)
 	if err != nil {
 		return err
 	}
@@ -220,7 +217,6 @@ func (s *PagedServerStream) Context() context.Context {
 func (s *PagedServerStream) SendMsg(m interface{}) error {
 	var (
 		messagesSent int
-		marshaler    jsonpb.Marshaler
 	)
 
 	s.mtx.Lock()
@@ -242,7 +238,7 @@ func (s *PagedServerStream) SendMsg(m interface{}) error {
 		s.writeBuffer.WriteString(`,`)
 	}
 
-	err := marshaler.Marshal(&s.writeBuffer, m.(proto.Message))
+	err := json.NewEncoder(&s.writeBuffer).Encode(m)
 	if err != nil {
 		s.err = err
 		return err

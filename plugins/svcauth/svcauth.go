@@ -127,10 +127,11 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 
 		inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
 		var callerType = g.lookupMessageType(inputType, authnInfo.Caller)
+		shortCallerType := toShort(callerType)
 
-		if !seenCallerTypes[callerType] {
-			seenCallerTypes[callerType] = true
-			g.P(`AuthenticateAs`, callerType, `(ctx `, g.contextPkg.Use(), `.Context, strategies []string, caller *`, callerType, `) error`)
+		if !seenCallerTypes[shortCallerType] {
+			seenCallerTypes[shortCallerType] = true
+			g.P(`AuthenticateAs`, shortCallerType, `(ctx `, g.contextPkg.Use(), `.Context, strategies []string, caller *`, callerType, `) error`)
 		}
 	}
 	g.P(``)
@@ -141,9 +142,9 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.P(`// - `, scope)
 		}
 		if ctx.ContextType != "" {
-			g.P(`Authorize`, ctx.CallerType, `For`, ctx.ContextType, `(ctx `, g.contextPkg.Use(), `.Context, scope string, caller *`, ctx.CallerType, `, context *`, ctx.ContextType, `) error`)
+			g.P(`Authorize`, ctx.ShortCallerType, `For`, ctx.ShortCallerType, `(ctx `, g.contextPkg.Use(), `.Context, scope string, caller *`, ctx.CallerType, `, context *`, ctx.ContextType, `) error`)
 		} else {
-			g.P(`Authorize`, ctx.CallerType, `(ctx `, g.contextPkg.Use(), `.Context, scope string, caller *`, ctx.CallerType, `) error`)
+			g.P(`Authorize`, ctx.ShortCallerType, `(ctx `, g.contextPkg.Use(), `.Context, scope string, caller *`, ctx.CallerType, `) error`)
 		}
 	}
 	g.P(`}`)
@@ -151,7 +152,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 
 	for _, ctx := range authzContexts {
 		for _, scope := range ctx.Scopes {
-			g.gen.AddInitf("%s.RegisterAuthScope(%q, %q, %q, %q)", g.runtimePkg.Use(), file.GetPackage(), ctx.CallerType, ctx.ContextType, scope)
+			g.gen.AddInitf("%s.RegisterAuthScope(%q, %q, %q, %q)", g.runtimePkg.Use(), file.GetPackage(), ctx.ShortCallerType, ctx.ShortContextType, scope)
 		}
 	}
 
@@ -199,6 +200,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 
 		inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
 		var callerType = g.lookupMessageType(inputType, authnInfo.Caller)
+		shortCallerType := toShort(callerType)
 
 		g.P("func (s *", serverType, ") ", g.generateServerSignature(servName, method), " {")
 		g.P("var (")
@@ -213,7 +215,7 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P(")")
 
 		// Authenticate
-		g.P("if err := s.authenticator.AuthenticateAs", callerType, "(ctx, ", "authRule_", servName, "_", authMethod.authnRuleID, ", &caller); err != nil {")
+		g.P("if err := s.authenticator.AuthenticateAs", shortCallerType, "(ctx, ", "authRule_", servName, "_", authMethod.authnRuleID, ", &caller); err != nil {")
 		if !method.GetServerStreaming() && !method.GetClientStreaming() {
 			g.P("return nil, err")
 		} else {
@@ -227,11 +229,12 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 			var args string
 			if authzInfo.Context != "" {
 				var contextType = g.lookupMessageType(inputType, authzInfo.Context)
-				methodName = `Authorize` + callerType + `For` + contextType
+				shortContextType := toShort(contextType)
+				methodName = `Authorize` + shortCallerType + `For` + shortContextType
 				args = "&caller, context"
 				g.getMessage(inputType, authzInfo.Context, "input", "context", true)
 			} else {
-				methodName = `Authorize` + callerType
+				methodName = `Authorize` + shortCallerType
 				args = "&caller"
 			}
 			g.P("if err := s.authenticator.", methodName, "(ctx, ", "authRule_", servName, "_", authMethod.authzRuleID, ", ", args, "); err != nil {")
@@ -525,9 +528,11 @@ func (g *svcauth) setMessage(inputType *generator.Descriptor, path, input, outpu
 }
 
 type authzContext struct {
-	CallerType  string
-	ContextType string
-	Scopes      []string
+	CallerType       string
+	ContextType      string
+	ShortCallerType  string
+	ShortContextType string
+	Scopes           []string
 }
 
 func (g *svcauth) lookupAuthzContexts(methods []*authMethod) []*authzContext {
@@ -535,10 +540,12 @@ func (g *svcauth) lookupAuthzContexts(methods []*authMethod) []*authzContext {
 
 	for _, authMethod := range methods {
 		var (
-			inputType   *generator.Descriptor
-			callerType  string
-			contextType string
-			id          string
+			inputType        *generator.Descriptor
+			callerType       string
+			contextType      string
+			shortCallerType  string
+			shortContextType string
+			id               string
 		)
 
 		method, authzInfo := authMethod.method, authMethod.Authz
@@ -555,12 +562,17 @@ func (g *svcauth) lookupAuthzContexts(methods []*authMethod) []*authzContext {
 			id = callerType + "/" + contextType
 		}
 
+		shortCallerType = toShort(callerType)
+		shortContextType = toShort(contextType)
+
 		ctx := m[id]
 
 		if ctx == nil {
 			ctx = &authzContext{
-				CallerType:  callerType,
-				ContextType: contextType,
+				CallerType:       callerType,
+				ContextType:      contextType,
+				ShortCallerType:  shortCallerType,
+				ShortContextType: shortContextType,
 			}
 			m[id] = ctx
 		}
@@ -584,4 +596,11 @@ func (g *svcauth) lookupAuthzContexts(methods []*authMethod) []*authzContext {
 	}
 
 	return l
+}
+
+func toShort(s string) string {
+	if idx := strings.LastIndexByte(s, '.'); idx >= 0 {
+		return s[idx+1:]
+	}
+	return s
 }
