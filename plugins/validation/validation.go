@@ -134,7 +134,7 @@ func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb
 	}
 
 	if field.IsRepeated() {
-		g.P(`for idx, value :=range msg.`, fieldName, `{`)
+		g.P(`for _, value :=range msg.`, fieldName, `{`)
 		if gogoproto.IsNullable(field) {
 			g.P(`if value != nil {`)
 			g.P(`if err := `, casttyp, `.Validate(); err != nil {`)
