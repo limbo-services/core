@@ -79,7 +79,14 @@ func (g *jsonschema) Generate(file *generator.FileDescriptor) {
 	defVarName := fmt.Sprintf("jsonSchemaDefs%d", g.initCounter)
 	g.gen.AddInitf(`%s.RegisterSchemaDefinitions(%s)`, g.runtimePkg.Use(), defVarName)
 	g.P(`var `+defVarName+` = []`, g.runtimePkg.Use(), `.SchemaDefinition{`)
-	for name, def := range g.definitions {
+	var definitionNames = make([]string, 0, len(g.definitions))
+	for name := range g.definitions {
+		definitionNames = append(definitionNames, name)
+	}
+	sort.Strings(definitionNames)
+	for _, name := range definitionNames {
+		def := g.definitions[name]
+
 		data, err := json.MarshalIndent(def, "\t\t", "\t")
 		if err != nil {
 			panic(err)
