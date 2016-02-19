@@ -10,7 +10,6 @@ import (
 
 	"golang.org/x/net/context"
 
-	"google.golang.org/grpc"
 	"google.golang.org/grpc/metadata"
 )
 
@@ -18,12 +17,15 @@ func NewServerStream(
 	ctx context.Context,
 	rw http.ResponseWriter, req *http.Request,
 	writeStream, readStream bool, pageSize int,
-) (grpc.ServerStream, error) {
+	annotate func(x interface{}) error,
+) (*ServerStream, error) {
 	var (
 		r   streamReader
 		w   streamWriter
 		err error
 	)
+
+	ctx = annotateContext(ctx, req)
 
 	if writeStream {
 		w = newPagedStreamWriter(rw, pageSize)
@@ -32,15 +34,15 @@ func NewServerStream(
 	}
 
 	if readStream {
-		r, err = newPagedStreamReader(req)
+		r, err = newPagedStreamReader(req, annotate)
 	} else {
-		r, err = newSingleStreamReader(req)
+		r, err = newSingleStreamReader(req, annotate)
 	}
 	if err != nil {
 		return nil, err
 	}
 
-	s := &serverStream{
+	s := &ServerStream{
 		ctx:          ctx,
 		streamReader: r,
 		streamWriter: w,
@@ -49,13 +51,13 @@ func NewServerStream(
 	return s, nil
 }
 
-type serverStream struct {
+type ServerStream struct {
 	ctx context.Context
 	streamReader
 	streamWriter
 }
 
-func (ss *serverStream) Context() context.Context {
+func (ss *ServerStream) Context() context.Context {
 	return ss.ctx
 }
 
@@ -66,6 +68,7 @@ type streamReader interface {
 type streamWriter interface {
 	SendHeader(md metadata.MD) error
 	SetTrailer(md metadata.MD)
+	SetError(err error)
 	SendMsg(v interface{}) error
 	CloseSend() error
 }
@@ -126,6 +129,7 @@ type pagedStreamWriter struct {
 
 	rw    http.ResponseWriter
 	mtx   sync.Mutex
+	err   error
 	items []interface{}
 	max   int
 }
@@ -140,6 +144,12 @@ func newPagedStreamWriter(rw http.ResponseWriter, maxItems int) *pagedStreamWrit
 	}
 
 	return w
+}
+
+func (w *pagedStreamWriter) SetError(err error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	w.err = err
 }
 
 func (w *pagedStreamWriter) SendMsg(v interface{}) error {
@@ -159,6 +169,11 @@ func (w *pagedStreamWriter) SendMsg(v interface{}) error {
 }
 
 func (w *pagedStreamWriter) CloseSend() error {
+	if w.err != nil {
+		respondWithGRPCError(w.rw, w.err)
+		return w.err
+	}
+
 	err := w.headerWriter.close()
 	if err != nil {
 		return err
@@ -174,6 +189,7 @@ type singleStreamWriter struct {
 
 	rw   http.ResponseWriter
 	mtx  sync.Mutex
+	err  error
 	item interface{}
 }
 
@@ -181,6 +197,12 @@ func newSingleStreamWriter(rw http.ResponseWriter) *singleStreamWriter {
 	w := &singleStreamWriter{rw: rw}
 	w.headerWriter.init(rw)
 	return w
+}
+
+func (w *singleStreamWriter) SetError(err error) {
+	w.mtx.Lock()
+	defer w.mtx.Unlock()
+	w.err = err
 }
 
 func (w *singleStreamWriter) SendMsg(v interface{}) error {
@@ -196,6 +218,11 @@ func (w *singleStreamWriter) SendMsg(v interface{}) error {
 }
 
 func (w *singleStreamWriter) CloseSend() error {
+	if w.err != nil {
+		respondWithGRPCError(w.rw, w.err)
+		return w.err
+	}
+
 	err := w.headerWriter.close()
 	if err != nil {
 		return err
@@ -207,15 +234,16 @@ func (w *singleStreamWriter) CloseSend() error {
 }
 
 type pagedStreamReader struct {
-	req   *http.Request
-	items []json.RawMessage
+	req      *http.Request
+	annotate func(x interface{}) error
+	items    []json.RawMessage
 
 	mtx    sync.Mutex
 	unread []json.RawMessage
 }
 
-func newPagedStreamReader(req *http.Request) (*pagedStreamReader, error) {
-	r := &pagedStreamReader{req: req}
+func newPagedStreamReader(req *http.Request, annotate func(x interface{}) error) (*pagedStreamReader, error) {
+	r := &pagedStreamReader{req: req, annotate: annotate}
 
 	if req.Method == "POST" || req.Method == "PUT" || req.Method == "PATCH" {
 		err := json.NewDecoder(req.Body).Decode(&r.items)
@@ -241,20 +269,26 @@ func (r *pagedStreamReader) RecvMsg(v interface{}) error {
 		return err
 	}
 
+	err = r.annotate(v)
+	if err != nil {
+		return err
+	}
+
 	r.unread = r.unread[1:]
 	return nil
 }
 
 type singleStreamReader struct {
-	req  *http.Request
-	data []byte
+	req      *http.Request
+	annotate func(x interface{}) error
+	data     []byte
 
 	mtx  sync.Mutex
 	read bool
 }
 
-func newSingleStreamReader(req *http.Request) (*singleStreamReader, error) {
-	r := &singleStreamReader{req: req}
+func newSingleStreamReader(req *http.Request, annotate func(x interface{}) error) (*singleStreamReader, error) {
+	r := &singleStreamReader{req: req, annotate: annotate}
 
 	if req.Method == "POST" || req.Method == "PUT" || req.Method == "PATCH" {
 		data, err := ioutil.ReadAll(req.Body)
@@ -262,8 +296,6 @@ func newSingleStreamReader(req *http.Request) (*singleStreamReader, error) {
 			return nil, err
 		}
 		r.data = data
-	} else {
-		r.read = true
 	}
 
 	return r, nil
@@ -277,7 +309,14 @@ func (r *singleStreamReader) RecvMsg(v interface{}) error {
 		return io.EOF
 	}
 
-	err := json.Unmarshal(r.data, v)
+	if r.data != nil {
+		err := json.Unmarshal(r.data, v)
+		if err != nil {
+			return err
+		}
+	}
+
+	err := r.annotate(v)
 	if err != nil {
 		return err
 	}

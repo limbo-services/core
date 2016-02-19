@@ -590,7 +590,13 @@ func (g *svcauth) lookupAuthzContexts(methods []*authMethod) []*authzContext {
 	}
 
 	var l = make([]*authzContext, 0, len(m))
-	for _, ctx := range m {
+	var keys = make([]string, 0, len(m))
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, k := range keys {
+		ctx := m[k]
 		l = append(l, ctx)
 		sort.Strings(ctx.Scopes)
 		tmp := ctx.Scopes

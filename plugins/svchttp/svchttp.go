@@ -134,7 +134,7 @@ func filterAPIs(service *pb.ServiceDescriptorProto, methods []*pb.MethodDescript
 	path := fmt.Sprintf("6,%d", svcIndex) // 6 means service.
 
 	var (
-		descName  = "_" + service.GetName() + "_servDesc"
+		descName  = "_" + service.GetName() + "_serviceDesc"
 		methodIdx = 0
 		streamIdx = 0
 	)
@@ -292,43 +292,43 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.P(`params := `, routerP, `(ctx)`)
 		}
 
-		g.P(`ctx = `, g.runtimePkg.Use(), `.AnnotateContext(ctx, req)`)
-		g.P()
-
 		g.P(`stream, err := `, g.runtimePkg.Use(), `.NewServerStream(ctx, rw, req, `,
 			method.GetServerStreaming(), `, `, method.GetClientStreaming(), `, `, int(info.PageSize), `, func(x interface{}) error {`)
 		g.P(`input := x.(*`, g.typeName(inputTypeName), `)`)
+		g.P(`_ = input`)
 		g.P()
 
 		for param, value := range queryParams {
-			g.P("// populate ", param, "=", value)
+			g.P("// populate ?", param, "=", value)
 			g.generateHttpMapping(inputType, value, "req.URL.Query().Get("+strconv.Quote(param)+")")
 		}
 
 		for _, v := range vars {
-			g.P("// populate ", v.Name)
+			g.P("// populate {", v.Name, "}")
 			g.generateHttpMapping(inputType, v.Name, "params.Get("+strconv.Quote(v.Name)+")")
 		}
 
 		g.P(`return nil`)
 		g.P(`})`)
+		g.P()
 
-		g.P(`desc := &`, api.descName, `[`, api.index, `]`)
 		if !api.stream {
-			g.P(`output, err := desc.Handler(h.ss, ctx, stream.RecvMsg)`)
-			g.P(`if err == nil {`)
-			g.P(`if output != nil {`)
-			g.P(`err = stream.SendMsg(output)`)
-			g.P(`} else {`)
+			g.P(`desc := &`, api.descName, `.Methods[`, api.index, `]`)
+			g.P(`output, err := desc.Handler(h.ss, stream.Context(), stream.RecvMsg)`)
+			g.P(`if err == nil && output == nil {`)
 			g.P(`err = `, g.grpcPkg.Use(), `.Errorf(`, g.grpcCodesPkg.Use(), `.Internal, "internal server error")`)
 			g.P(`}`)
+			g.P(`if err == nil {`)
+			g.P(`err = stream.SendMsg(output)`)
 			g.P(`}`)
 		} else {
-			g.P(`err := desc.Handler(h.ss, stream)`)
+			g.P(`desc := &`, api.descName, `.Streams[`, api.index, `]`)
+			g.P(`err = desc.Handler(h.ss, stream)`)
 		}
 		g.P(`if err != nil {`)
 		g.P(`stream.SetError(err)`)
 		g.P(`}`)
+		g.P()
 
 		g.P(`return stream.CloseSend()`)
 		g.P("}")
@@ -340,7 +340,7 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 func (g *svchttp) generateHttpMapping(inputType *generator.Descriptor, path string, value string) {
 	g.P("{")
-	g.P("var msg0 = &input")
+	g.P("var msg0 = input")
 
 	partType := inputType
 	parts := strings.Split(path, ".")
