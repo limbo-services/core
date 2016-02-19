@@ -123,13 +123,31 @@ type API struct {
 	method        *pb.MethodDescriptorProto
 	desc          *HttpRule
 	descIndexPath string
+
+	descName string
+	stream   bool
+	index    int
 }
 
 func filterAPIs(service *pb.ServiceDescriptorProto, methods []*pb.MethodDescriptorProto, svcIndex int) []*API {
 	var apis = make([]*API, 0, len(methods))
 	path := fmt.Sprintf("6,%d", svcIndex) // 6 means service.
 
+	var (
+		descName  = "_" + service.GetName() + "_servDesc"
+		methodIdx = 0
+		streamIdx = 0
+	)
+
 	for i, method := range methods {
+		stream := method.GetClientStreaming() || method.GetServerStreaming()
+		index := 0
+		if stream {
+			index = streamIdx
+		} else {
+			index = methodIdx
+		}
+
 		v, _ := proto.GetExtension(method.Options, E_Http)
 		info, _ := v.(*HttpRule)
 		if info != nil {
@@ -138,7 +156,16 @@ func filterAPIs(service *pb.ServiceDescriptorProto, methods []*pb.MethodDescript
 				method:        method,
 				desc:          info,
 				descIndexPath: fmt.Sprintf("%s,2,%d", path, i), // 2 means method in a service.
+				descName:      descName,
+				stream:        stream,
+				index:         index,
 			})
+		}
+
+		if stream {
+			streamIdx++
+		} else {
+			methodIdx++
 		}
 	}
 
@@ -260,27 +287,18 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P("}")
 		g.P()
 
-		g.P(`var (`)
-		g.P(`input `, g.typeName(inputTypeName))
 		if len(vars) > 0 {
 			routerP := g.routerPkg.Use() + ".P"
-			g.P(`params = `, routerP, `(ctx)`)
+			g.P(`params := `, routerP, `(ctx)`)
 		}
-		g.P(`)`)
-		g.P()
 
 		g.P(`ctx = `, g.runtimePkg.Use(), `.AnnotateContext(ctx, req)`)
 		g.P()
 
-		if httpMethod == "POST" || httpMethod == "PUT" || httpMethod == "PATCH" {
-			g.P("{ // from body")
-			g.P("err := ", g.jsonPkg.Use(), ".NewDecoder(req.Body).Decode(&input)")
-			g.P(`if err != nil {`)
-			g.P(`return `, g.jujuErrorsPkg.Use(), `.Trace(err)`)
-			g.P(`}`)
-			g.P(`}`)
-			g.P()
-		}
+		g.P(`stream, err := `, g.runtimePkg.Use(), `.NewServerStream(ctx, rw, req, `,
+			method.GetServerStreaming(), `, `, method.GetClientStreaming(), `, `, int(info.PageSize), `, func(x interface{}) error {`)
+		g.P(`input := x.(*`, g.typeName(inputTypeName), `)`)
+		g.P()
 
 		for param, value := range queryParams {
 			g.P("// populate ", param, "=", value)
@@ -292,31 +310,27 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.generateHttpMapping(inputType, v.Name, "params.Get("+strconv.Quote(v.Name)+")")
 		}
 
-		g.P(`{ // call`)
-		if !method.GetServerStreaming() && !method.GetClientStreaming() {
-			g.P(`output, err := h.ss.`, g.generateServerCall(servName, method))
-			g.P(`if err != nil {`)
-			g.P(`return `, g.jujuErrorsPkg.Use(), `.Trace(err)`)
-			g.P(`}`)
-			g.P(g.runtimePkg.Use(), `.RenderMessageJSON(rw, 200, output)`)
-			g.P("return nil")
-		} else {
-			if info.Paged {
-				g.P(`ss, err := `, g.runtimePkg.Use(), `.NewPagedServerStream(ctx, rw, `, int(info.PageSize), `)`)
-				g.P(`if err != nil {`)
-				g.P(`return `, g.jujuErrorsPkg.Use(), `.Trace(err)`)
-				g.P(`}`)
-				g.P(`defer ss.Close()`)
-				g.P(`stream := &`, unexport(servName), method.GetName(), `Server{ss}`)
-				g.P(`err = h.ss.`, g.generateServerCall(servName, method))
-			} else {
-				g.gen.Fail("unsupported stream response")
-			}
-		}
-		g.P(`}`)
-		g.P()
+		g.P(`return nil`)
+		g.P(`})`)
 
-		g.P("return nil")
+		g.P(`desc := &`, api.descName, `[`, api.index, `]`)
+		if !api.stream {
+			g.P(`output, err := desc.Handler(h.ss, ctx, stream.RecvMsg)`)
+			g.P(`if err == nil {`)
+			g.P(`if output != nil {`)
+			g.P(`err = stream.SendMsg(output)`)
+			g.P(`} else {`)
+			g.P(`err = `, g.grpcPkg.Use(), `.Errorf(`, g.grpcCodesPkg.Use(), `.Internal, "internal server error")`)
+			g.P(`}`)
+			g.P(`}`)
+		} else {
+			g.P(`err := desc.Handler(h.ss, stream)`)
+		}
+		g.P(`if err != nil {`)
+		g.P(`stream.SetError(err)`)
+		g.P(`}`)
+
+		g.P(`return stream.CloseSend()`)
 		g.P("}")
 		g.P()
 
