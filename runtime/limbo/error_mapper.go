@@ -12,7 +12,8 @@ type ErrorMapper interface {
 }
 
 func WithErrorMapper(mapper ErrorMapper) gogogrpc.ServerOption {
-	return func(desc *grpc.ServiceDesc, srv interface{}) {
+	return gogogrpc.WithServiceDescWrapper(func(desc *grpc.ServiceDesc) {
+
 		for i, m := range desc.Methods {
 			desc.Methods[i] = wrapMethodWithErrorMapper(desc, m, mapper)
 		}
@@ -21,7 +22,7 @@ func WithErrorMapper(mapper ErrorMapper) gogogrpc.ServerOption {
 			desc.Streams[i] = wrapStreamWithErrorMapper(desc, s, mapper)
 		}
 
-	}
+	})
 }
 
 func wrapMethodWithErrorMapper(srv *grpc.ServiceDesc, desc grpc.MethodDesc, mapper ErrorMapper) grpc.MethodDesc {
