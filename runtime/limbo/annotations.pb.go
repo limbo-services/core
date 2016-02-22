@@ -121,6 +121,22 @@ var E_MaxLength = &proto.ExtensionDesc{
 	Tag:           "varint,51307,opt,name=maxLength",
 }
 
+var E_MinItems = &proto.ExtensionDesc{
+	ExtendedType:  (*google_protobuf.FieldOptions)(nil),
+	ExtensionType: (*uint32)(nil),
+	Field:         51308,
+	Name:          "limbo.minItems",
+	Tag:           "varint,51308,opt,name=minItems",
+}
+
+var E_MaxItems = &proto.ExtensionDesc{
+	ExtendedType:  (*google_protobuf.FieldOptions)(nil),
+	ExtensionType: (*uint32)(nil),
+	Field:         51309,
+	Name:          "limbo.maxItems",
+	Tag:           "varint,51309,opt,name=maxItems",
+}
+
 var E_DefaultAuthn = &proto.ExtensionDesc{
 	ExtendedType:  (*google_protobuf.ServiceOptions)(nil),
 	ExtensionType: (*AuthnRule)(nil),
@@ -173,6 +189,8 @@ func init() {
 	proto.RegisterExtension(E_Pattern)
 	proto.RegisterExtension(E_MinLength)
 	proto.RegisterExtension(E_MaxLength)
+	proto.RegisterExtension(E_MinItems)
+	proto.RegisterExtension(E_MaxItems)
 	proto.RegisterExtension(E_DefaultAuthn)
 	proto.RegisterExtension(E_DefaultAuthz)
 	proto.RegisterExtension(E_Authn)

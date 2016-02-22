@@ -400,6 +400,12 @@ func (g *jsonschema) fieldToSchema(field *pb.FieldDescriptorProto) (map[string]i
 			"type":  "array",
 			"items": def,
 		}
+		if x, ok := limbo.GetMinItems(field); ok {
+			def["minItems"] = x
+		}
+		if x, ok := limbo.GetMaxItems(field); ok {
+			def["maxItems"] = x
+		}
 	}
 
 	return def, dep

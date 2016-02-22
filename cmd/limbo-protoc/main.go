@@ -33,7 +33,6 @@ func main() {
 		"builtintypes",
 		"jsonschema",
 		"validation",
-		"middelware",
 		enabled("svcauth", svcauth, true),
 		enabled("svchttp", svchttp, true),
 		"sql",

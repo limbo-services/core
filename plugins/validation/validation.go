@@ -59,6 +59,14 @@ func (g *validation) generateValidator(file *generator.FileDescriptor, msg *gene
 			g.generateRequiredTest(msg, field)
 		}
 
+		if n, ok := limbo.GetMinItems(field); ok {
+			g.generateMinItemsTest(msg, field, int(n))
+		}
+
+		if n, ok := limbo.GetMaxItems(field); ok {
+			g.generateMaxItemsTest(msg, field, int(n))
+		}
+
 		if pattern, ok := limbo.GetPattern(field); ok {
 			patternVar := fmt.Sprintf("valPattern_%s_%d", msg.GetName(), idx)
 			patterns[patternVar] = pattern
@@ -171,6 +179,30 @@ func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb
 		}
 	}
 
+}
+
+func (g *validation) generateMinItemsTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, minItems int) {
+	fieldName := g.gen.GetFieldName(msg, field)
+
+	if !field.IsRepeated() {
+		g.gen.Fail("limbo.minItems can only be used on repeated fields.")
+	}
+
+	g.P(`if len(msg.`, fieldName, `) < `, minItems, ` {`)
+	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("number of items in `, field.Name, ` (%q) is to small (minimum: `, minItems, `)", len(msg.`, fieldName, `))`)
+	g.P(`}`)
+}
+
+func (g *validation) generateMaxItemsTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, maxItems int) {
+	fieldName := g.gen.GetFieldName(msg, field)
+
+	if !field.IsRepeated() {
+		g.gen.Fail("limbo.maxItems can only be used on repeated fields.")
+	}
+
+	g.P(`if len(msg.`, fieldName, `) < `, maxItems, ` {`)
+	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("number of items in `, field.Name, ` (%q) is to small (maximum: `, maxItems, `)", len(msg.`, fieldName, `))`)
+	g.P(`}`)
 }
 
 func (g *validation) generateMinLengthTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, minLength int) {

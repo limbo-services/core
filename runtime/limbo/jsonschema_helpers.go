@@ -85,3 +85,27 @@ func GetMaxLength(field *pb.FieldDescriptorProto) (uint32, bool) {
 	}
 	return *s, true
 }
+
+func GetMinItems(field *pb.FieldDescriptorProto) (uint32, bool) {
+	if field == nil || field.Options == nil {
+		return 0, false
+	}
+	v, _ := proto.GetExtension(field.Options, E_MinItems)
+	s, _ := v.(*uint32)
+	if s == nil {
+		return 0, false
+	}
+	return *s, true
+}
+
+func GetMaxItems(field *pb.FieldDescriptorProto) (uint32, bool) {
+	if field == nil || field.Options == nil {
+		return 0, false
+	}
+	v, _ := proto.GetExtension(field.Options, E_MaxItems)
+	s, _ := v.(*uint32)
+	if s == nil {
+		return 0, false
+	}
+	return *s, true
+}

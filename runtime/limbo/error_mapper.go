@@ -3,38 +3,33 @@ package limbo
 import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
+
+	"github.com/limbo-services/protobuf/gogogrpc"
 )
 
 type ErrorMapper interface {
 	HandleError(err error) error
 }
 
-func ErrorMapperMiddleware(mapper ErrorMapper) Middleware {
-	return &errorMapperMiddleware{mapper}
-}
+func WithErrorMapper(mapper ErrorMapper) gogogrpc.ServerOption {
+	return func(desc *grpc.ServiceDesc, srv interface{}) {
+		for i, m := range desc.Methods {
+			desc.Methods[i] = wrapMethodWithErrorMapper(desc, m, mapper)
+		}
 
-type errorMapperMiddleware struct {
-	mapper ErrorMapper
-}
+		for i, s := range desc.Streams {
+			desc.Streams[i] = wrapStreamWithErrorMapper(desc, s, mapper)
+		}
 
-func (t *errorMapperMiddleware) Apply(desc *grpc.ServiceDesc) {
-
-	for i, m := range desc.Methods {
-		desc.Methods[i] = t.wrapMethod(desc, m)
 	}
-
-	for i, s := range desc.Streams {
-		desc.Streams[i] = t.wrapStream(desc, s)
-	}
-
 }
 
-func (t *errorMapperMiddleware) wrapMethod(srv *grpc.ServiceDesc, desc grpc.MethodDesc) grpc.MethodDesc {
+func wrapMethodWithErrorMapper(srv *grpc.ServiceDesc, desc grpc.MethodDesc, mapper ErrorMapper) grpc.MethodDesc {
 	h := desc.Handler
 	desc.Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error) (out interface{}, err error) {
 		res, err := h(srv, ctx, dec)
 		if err != nil {
-			t.mapper.HandleError(err)
+			mapper.HandleError(err)
 			return nil, err
 		}
 		return res, nil
@@ -42,12 +37,12 @@ func (t *errorMapperMiddleware) wrapMethod(srv *grpc.ServiceDesc, desc grpc.Meth
 	return desc
 }
 
-func (t *errorMapperMiddleware) wrapStream(srv *grpc.ServiceDesc, desc grpc.StreamDesc) grpc.StreamDesc {
+func wrapStreamWithErrorMapper(srv *grpc.ServiceDesc, desc grpc.StreamDesc, mapper ErrorMapper) grpc.StreamDesc {
 	h := desc.Handler
 	desc.Handler = func(srv interface{}, stream grpc.ServerStream) (err error) {
 		err = h(srv, stream)
 		if err != nil {
-			t.mapper.HandleError(err)
+			mapper.HandleError(err)
 			return err
 		}
 		return nil

@@ -5,28 +5,23 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
+	"github.com/limbo-services/protobuf/gogogrpc"
 	"github.com/limbo-services/trace"
 )
 
-func TraceMiddleware() Middleware {
-	return &tracerMiddleware{}
+func WithTracer() gogogrpc.ServerOption {
+	return func(desc *grpc.ServiceDesc, srv interface{}) {
+		for i, m := range desc.Methods {
+			desc.Methods[i] = wrapMethodWithTracer(desc, m)
+		}
+
+		for i, s := range desc.Streams {
+			desc.Streams[i] = wrapStreamWithTracer(desc, s)
+		}
+	}
 }
 
-type tracerMiddleware struct{}
-
-func (t *tracerMiddleware) Apply(desc *grpc.ServiceDesc) {
-
-	for i, m := range desc.Methods {
-		desc.Methods[i] = t.wrapMethod(desc, m)
-	}
-
-	for i, s := range desc.Streams {
-		desc.Streams[i] = t.wrapStream(desc, s)
-	}
-
-}
-
-func (t *tracerMiddleware) wrapMethod(srv *grpc.ServiceDesc, desc grpc.MethodDesc) grpc.MethodDesc {
+func wrapMethodWithTracer(srv *grpc.ServiceDesc, desc grpc.MethodDesc) grpc.MethodDesc {
 	name := "/" + srv.ServiceName + "/" + desc.MethodName + "/root"
 	h := desc.Handler
 	desc.Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error) (out interface{}, err error) {
@@ -43,7 +38,7 @@ func (t *tracerMiddleware) wrapMethod(srv *grpc.ServiceDesc, desc grpc.MethodDes
 	return desc
 }
 
-func (t *tracerMiddleware) wrapStream(srv *grpc.ServiceDesc, desc grpc.StreamDesc) grpc.StreamDesc {
+func wrapStreamWithTracer(srv *grpc.ServiceDesc, desc grpc.StreamDesc) grpc.StreamDesc {
 	name := "/" + srv.ServiceName + "/" + desc.StreamName + "/root"
 	h := desc.Handler
 	desc.Handler = func(srv interface{}, stream grpc.ServerStream) (err error) {

@@ -22,11 +22,14 @@ extend google.protobuf.FieldOptions {
   optional ColumnDescriptor column = 51300;
   optional JoinDescriptor join     = 51301;
   optional bool hideInSwagger      = 51302;
+
   optional string format           = 51303;
-  optional bool required           = 51304;
+  optional bool   required         = 51304;
   optional string pattern          = 51305;
   optional uint32 minLength        = 51306;
   optional uint32 maxLength        = 51307;
+  optional uint32 minItems         = 51308;
+  optional uint32 maxItems         = 51309;
 }
 
 extend google.protobuf.ServiceOptions {
@@ -37,5 +40,5 @@ extend google.protobuf.ServiceOptions {
 extend google.protobuf.MethodOptions {
   optional AuthnRule authn = 51500;
   optional AuthzRule authz = 51501;
-  optional HttpRule http   = 51502;
+  optional HttpRule  http  = 51502;
 }
