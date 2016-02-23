@@ -30,7 +30,9 @@ func wrapMethodWithErrorMapper(srv *grpc.ServiceDesc, desc grpc.MethodDesc, mapp
 	desc.Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error) (out interface{}, err error) {
 		res, err := h(srv, ctx, dec)
 		if err != nil {
-			mapper.HandleError(err)
+			if e := mapper.HandleError(err); e != nil {
+				err = e
+			}
 			return nil, err
 		}
 		return res, nil
@@ -43,7 +45,9 @@ func wrapStreamWithErrorMapper(srv *grpc.ServiceDesc, desc grpc.StreamDesc, mapp
 	desc.Handler = func(srv interface{}, stream grpc.ServerStream) (err error) {
 		err = h(srv, stream)
 		if err != nil {
-			mapper.HandleError(err)
+			if e := mapper.HandleError(err); e != nil {
+				err = e
+			}
 			return err
 		}
 		return nil
