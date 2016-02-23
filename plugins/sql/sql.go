@@ -24,6 +24,9 @@ type gensql struct {
 
 	imports    generator.PluginImports
 	sqlPkg     generator.Single
+	jsonPkg    generator.Single
+	tracePkg   generator.Single
+	contextPkg generator.Single
 	runtimePkg generator.Single
 	timePkg    generator.Single
 	mysqlPkg   generator.Single
@@ -61,6 +64,9 @@ func (g *gensql) Generate(file *generator.FileDescriptor) {
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
 	g.sqlPkg = imp.NewImport("database/sql")
+	g.jsonPkg = imp.NewImport("encoding/json")
+	g.contextPkg = imp.NewImport("golang.org/x/net/context")
+	g.tracePkg = imp.NewImport("github.com/limbo-services/trace")
 	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
 	g.timePkg = imp.NewImport("time")
 	g.mysqlPkg = imp.NewImport("github.com/go-sql-driver/mysql")
@@ -499,6 +505,12 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 	for i, column := range scanner.Column {
 		m := g.models[column.MessageType]
 		field := m.GetFieldDescriptor(lastField(column.FieldName))
+
+		if field.IsRepeated() {
+			g.P(`b`, i, ` []byte`)
+			continue
+		}
+
 		switch field.GetType() {
 		case pb.FieldDescriptorProto_TYPE_BOOL:
 			g.P(`b`, i, ` `, g.sqlPkg.Use(), `.NullBool`)
@@ -524,6 +536,8 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 			g.P(`b`, i, ` []byte`)
 		case pb.FieldDescriptorProto_TYPE_STRING:
 			g.P(`b`, i, ` `, g.sqlPkg.Use(), `.NullString`)
+		case pb.FieldDescriptorProto_TYPE_ENUM:
+			g.P(`b`, i, ` `, g.sqlPkg.Use(), `.NullInt64`)
 		case pb.FieldDescriptorProto_TYPE_MESSAGE:
 			if field.GetTypeName() == ".google.protobuf.Timestamp" {
 				g.P(`b`, i, ` `, g.mysqlPkg.Use(), `.NullTime`)
@@ -563,19 +577,23 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 			dst = fmt.Sprintf("j%d", joins[column.JoinedWith])
 		}
 
-		switch field.GetType() {
-		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			if field.GetTypeName() == ".google.protobuf.Timestamp" {
-				valid = fmt.Sprintf(`b%d.Valid`, i)
-			} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
-				valid = fmt.Sprintf(`b%d.Valid`, i)
-			} else {
-				valid = fmt.Sprintf(`b%d != nil`, i)
-			}
-		case pb.FieldDescriptorProto_TYPE_BYTES:
+		if field.IsRepeated() {
 			valid = fmt.Sprintf(`b%d != nil`, i)
-		default:
-			valid = fmt.Sprintf(`b%d.Valid`, i)
+		} else {
+			switch field.GetType() {
+			case pb.FieldDescriptorProto_TYPE_MESSAGE:
+				if field.GetTypeName() == ".google.protobuf.Timestamp" {
+					valid = fmt.Sprintf(`b%d.Valid`, i)
+				} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+					valid = fmt.Sprintf(`b%d.Valid`, i)
+				} else {
+					valid = fmt.Sprintf(`b%d != nil`, i)
+				}
+			case pb.FieldDescriptorProto_TYPE_BYTES:
+				valid = fmt.Sprintf(`b%d != nil`, i)
+			default:
+				valid = fmt.Sprintf(`b%d.Valid`, i)
+			}
 		}
 
 		fieldName := g.gen.GetFieldName(m, field)
@@ -584,51 +602,60 @@ func (g *gensql) generateScanner(file *generator.FileDescriptor, message *genera
 		if column.JoinedWith != "" {
 			g.P(dst, `Valid = true`)
 		}
-		switch field.GetType() {
-		case pb.FieldDescriptorProto_TYPE_BOOL:
-			g.P(dst, `.`, fieldName, ` = b`, i, `.Bool`)
-		case pb.FieldDescriptorProto_TYPE_DOUBLE:
-			g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float64)`)
-		case pb.FieldDescriptorProto_TYPE_FLOAT:
-			g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float64)`)
-		case pb.FieldDescriptorProto_TYPE_FIXED32,
-			pb.FieldDescriptorProto_TYPE_UINT32:
-			g.P(dst, `.`, fieldName, ` = uint32(b`, i, `.Int64)`)
-		case pb.FieldDescriptorProto_TYPE_FIXED64,
-			pb.FieldDescriptorProto_TYPE_UINT64:
-			g.P(dst, `.`, fieldName, ` = uint64(b`, i, `.Int64)`)
-		case pb.FieldDescriptorProto_TYPE_SFIXED32,
-			pb.FieldDescriptorProto_TYPE_INT32,
-			pb.FieldDescriptorProto_TYPE_SINT32:
-			g.P(dst, `.`, fieldName, ` = int32(b`, i, `.Int64)`)
-		case pb.FieldDescriptorProto_TYPE_SFIXED64,
-			pb.FieldDescriptorProto_TYPE_INT64,
-			pb.FieldDescriptorProto_TYPE_SINT64:
-			g.P(dst, `.`, fieldName, ` = int64(b`, i, `.Int64)`)
-		case pb.FieldDescriptorProto_TYPE_BYTES:
-			g.P(dst, `.`, fieldName, ` = b`, i, ``)
-		case pb.FieldDescriptorProto_TYPE_STRING:
-			g.P(dst, `.`, fieldName, ` = b`, i, `.String`)
-		case pb.FieldDescriptorProto_TYPE_MESSAGE:
-			if field.GetTypeName() == ".google.protobuf.Timestamp" {
-				if gogoproto.IsNullable(field) {
-					g.P(dst, `.`, fieldName, ` = &b`, i, `.Time`)
+
+		if field.IsRepeated() {
+			g.P(`if err:= `, g.jsonPkg.Use(), `.Unmarshal(b`, i, `, &`, dst, `.`, fieldName, `); err!=nil {`)
+			g.P(`return err`)
+			g.P(`}`)
+		} else {
+			switch field.GetType() {
+			case pb.FieldDescriptorProto_TYPE_BOOL:
+				g.P(dst, `.`, fieldName, ` = b`, i, `.Bool`)
+			case pb.FieldDescriptorProto_TYPE_DOUBLE:
+				g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float64)`)
+			case pb.FieldDescriptorProto_TYPE_FLOAT:
+				g.P(dst, `.`, fieldName, ` = float32(b`, i, `.Float64)`)
+			case pb.FieldDescriptorProto_TYPE_FIXED32,
+				pb.FieldDescriptorProto_TYPE_UINT32:
+				g.P(dst, `.`, fieldName, ` = uint32(b`, i, `.Int64)`)
+			case pb.FieldDescriptorProto_TYPE_FIXED64,
+				pb.FieldDescriptorProto_TYPE_UINT64:
+				g.P(dst, `.`, fieldName, ` = uint64(b`, i, `.Int64)`)
+			case pb.FieldDescriptorProto_TYPE_SFIXED32,
+				pb.FieldDescriptorProto_TYPE_INT32,
+				pb.FieldDescriptorProto_TYPE_SINT32:
+				g.P(dst, `.`, fieldName, ` = int32(b`, i, `.Int64)`)
+			case pb.FieldDescriptorProto_TYPE_SFIXED64,
+				pb.FieldDescriptorProto_TYPE_INT64,
+				pb.FieldDescriptorProto_TYPE_SINT64:
+				g.P(dst, `.`, fieldName, ` = int64(b`, i, `.Int64)`)
+			case pb.FieldDescriptorProto_TYPE_ENUM:
+				g.P(dst, `.`, fieldName, ` = `, g.typeName(field.GetTypeName()), `(b`, i, `.Int64)`)
+			case pb.FieldDescriptorProto_TYPE_BYTES:
+				g.P(dst, `.`, fieldName, ` = b`, i, ``)
+			case pb.FieldDescriptorProto_TYPE_STRING:
+				g.P(dst, `.`, fieldName, ` = b`, i, `.String`)
+			case pb.FieldDescriptorProto_TYPE_MESSAGE:
+				if field.GetTypeName() == ".google.protobuf.Timestamp" {
+					if gogoproto.IsNullable(field) {
+						g.P(dst, `.`, fieldName, ` = &b`, i, `.Time`)
+					} else {
+						g.P(dst, `.`, fieldName, ` = b`, i, `.Time`)
+					}
+				} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
+					if gogoproto.IsNullable(field) {
+						g.P(dst, `.`, fieldName, ` = &b`, i, `.`, g.typeName(field.GetTypeName()))
+					} else {
+						g.P(dst, `.`, fieldName, ` = b`, i, `.`, g.typeName(field.GetTypeName()))
+					}
 				} else {
-					g.P(dst, `.`, fieldName, ` = b`, i, `.Time`)
-				}
-			} else if limbo.IsGoSQLValuer(g.objectNamed(field.GetTypeName()).(*generator.Descriptor)) {
-				if gogoproto.IsNullable(field) {
-					g.P(dst, `.`, fieldName, ` = &b`, i, `.`, g.typeName(field.GetTypeName()))
-				} else {
-					g.P(dst, `.`, fieldName, ` = b`, i, `.`, g.typeName(field.GetTypeName()))
-				}
-			} else {
-				g.P(`err := m`, i, `.Unmarshal(b`, i, `)`)
-				g.P(`if err!=nil { return err }`)
-				if gogoproto.IsNullable(field) {
-					g.P(dst, `.`, fieldName, ` = &m`, i, ``)
-				} else {
-					g.P(dst, `.`, fieldName, ` = m`, i, ``)
+					g.P(`err := m`, i, `.Unmarshal(b`, i, `)`)
+					g.P(`if err!=nil { return err }`)
+					if gogoproto.IsNullable(field) {
+						g.P(dst, `.`, fieldName, ` = &m`, i, ``)
+					} else {
+						g.P(dst, `.`, fieldName, ` = m`, i, ``)
+					}
 				}
 			}
 		}
@@ -671,15 +698,15 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`}`)
 
 	g.P(`type `, message.Name, `Stmt interface {`)
-	g.P(`QueryRow(args ... interface{}) (`, message.Name, `Row)`)
-	g.P(`Query(args ... interface{}) (`, message.Name, `Rows, error)`)
-	g.P(`SelectSlice(dst []*`, message.Name, `, args ... interface{}) ([]*`, message.Name, `, error)`)
-	g.P(`SelectMessageSlice(dst []interface{}, args ... interface{}) ([]interface{}, error)`)
+	g.P(`QueryRow(ctx `, g.contextPkg.Use(), `.Context, args ... interface{}) (`, message.Name, `Row)`)
+	g.P(`Query(ctx `, g.contextPkg.Use(), `.Context, args ... interface{}) (`, message.Name, `Rows, error)`)
+	g.P(`SelectSlice(ctx `, g.contextPkg.Use(), `.Context, dst []*`, message.Name, `, args ... interface{}) ([]*`, message.Name, `, error)`)
+	g.P(`SelectMessageSlice(ctx `, g.contextPkg.Use(), `.Context, dst []interface{}, args ... interface{}) ([]interface{}, error)`)
 	g.P(`ForTx(tx *`, g.sqlPkg.Use(), `.Tx) `, message.Name, `Stmt`)
 	g.P(`}`)
 
 	g.P(`type `, message.Name, `Execer interface {`)
-	g.P(`Exec(args ... interface{}) (`, g.sqlPkg.Use(), `.Result, error)`)
+	g.P(`Exec(ctx `, g.contextPkg.Use(), `.Context, args ... interface{}) (`, g.sqlPkg.Use(), `.Result, error)`)
 	g.P(`ForTx(tx *`, g.sqlPkg.Use(), `.Tx) `, message.Name, `Execer`)
 	g.P(`}`)
 
@@ -702,19 +729,23 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`type `, unexport(*message.Name), `Stmt struct {`)
 	g.P(`stmt *`, g.sqlPkg.Use(), `.Stmt`)
 	g.P(`scanner func(func(...interface{}) error, *`, message.Name, `) error`)
+	g.P(`query string`)
 	g.P(`}`)
 
 	g.P(`type `, unexport(*message.Name), `Execer struct {`)
 	g.P(`stmt *`, g.sqlPkg.Use(), `.Stmt`)
+	g.P(`query string`)
 	g.P(`}`)
 
 	g.P(`type `, unexport(*message.Name), `Row struct {`)
 	g.P(`row *`, g.sqlPkg.Use(), `.Row`)
+	g.P(`span *`, g.tracePkg.Use(), `.Span`)
 	g.P(`scanner func(func(...interface{}) error, *`, message.Name, `) error`)
 	g.P(`}`)
 
 	g.P(`type `, unexport(*message.Name), `Rows struct {`)
 	g.P(`*`, g.sqlPkg.Use(), `.Rows`)
+	g.P(`span *`, g.tracePkg.Use(), `.Span`)
 	g.P(`scanner func(func(...interface{}) error, *`, message.Name, `) error`)
 	g.P(`}`)
 
@@ -739,35 +770,43 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`default:`)
 	g.P(`if b.err == nil { b.err = fmt.Errorf("unknown scanner: %s", scanner) }`)
 	g.P(`}`)
-	g.P(`stmt, err := b.db.Prepare(`, g.runtimePkg.Use(), `.CleanSQL(query))`)
+	g.P(`query = `, g.runtimePkg.Use(), `.CleanSQL(query)`)
+	g.P(`stmt, err := b.db.Prepare(query)`)
 	g.P(`if err != nil { if b.err == nil { b.err = err } }`)
-	g.P(`return &`, unexport(*message.Name), `Stmt{stmt: stmt, scanner: scannerFunc}`)
+	g.P(`return &`, unexport(*message.Name), `Stmt{stmt: stmt, query:query, scanner: scannerFunc}`)
 	g.P(`}`)
 
 	g.P(`func (b *`, unexport(*message.Name), `StmtBuilder) PrepareExecer( query string) (`, message.Name, `Execer) {`)
 	g.P(`if b.err != nil { return nil }`)
-	g.P(`stmt, err := b.db.Prepare(`, g.runtimePkg.Use(), `.CleanSQL(query))`)
+	g.P(`query = `, g.runtimePkg.Use(), `.CleanSQL(query)`)
+	g.P(`stmt, err := b.db.Prepare(query)`)
 	g.P(`if err != nil { if b.err == nil { b.err = err } }`)
-	g.P(`return &`, unexport(*message.Name), `Execer{stmt: stmt}`)
+	g.P(`return &`, unexport(*message.Name), `Execer{stmt: stmt, query: query}`)
 	g.P(`}`)
 
 	g.P(`func (b *`, unexport(*message.Name), `StmtBuilder) Err() (error) {`)
 	g.P(`return b.err`)
 	g.P(`}`)
 
-	g.P(`func (s *`, unexport(*message.Name), `Stmt) QueryRow(args ... interface{}) (`, message.Name, `Row) {`)
+	g.P(`func (s *`, unexport(*message.Name), `Stmt) QueryRow(ctx `, g.contextPkg.Use(), `.Context, args ... interface{}) (`, message.Name, `Row) {`)
+	g.P(`span, _ := `, g.tracePkg.Use(), `.New(ctx, "QueryRow("+s.query+")")`)
 	g.P(`row := s.stmt.QueryRow(args...)`)
-	g.P(`return &`, unexport(*message.Name), `Row{row: row, scanner: s.scanner}`)
+	g.P(`return &`, unexport(*message.Name), `Row{row: row, scanner: s.scanner, span: span}`)
 	g.P(`}`)
 
-	g.P(`func (s *`, unexport(*message.Name), `Stmt) Query(args ... interface{}) (`, message.Name, `Rows, error) {`)
+	g.P(`func (s *`, unexport(*message.Name), `Stmt) Query(ctx `, g.contextPkg.Use(), `.Context, args ... interface{}) (`, message.Name, `Rows, error) {`)
+	g.P(`span, _ := `, g.tracePkg.Use(), `.New(ctx, "Query("+s.query+")")`)
 	g.P(`rows, err := s.stmt.Query(args...)`)
-	g.P(`if err != nil { return nil, err }`)
-	g.P(`return &`, unexport(*message.Name), `Rows{Rows: rows, scanner: s.scanner}, nil`)
+	g.P(`if err != nil {`)
+	g.P(`span.Error(err)`)
+	g.P(`span.Close()`)
+	g.P(`return nil, err`)
+	g.P(`}`)
+	g.P(`return &`, unexport(*message.Name), `Rows{Rows: rows, scanner: s.scanner, span: span}, nil`)
 	g.P(`}`)
 
-	g.P(`func (s *`, unexport(*message.Name), `Stmt) SelectSlice(dst []*`, message.Name, `, args ... interface{}) ([]*`, message.Name, `, error) {`)
-	g.P(`rows, err := s.Query(args...)`)
+	g.P(`func (s *`, unexport(*message.Name), `Stmt) SelectSlice(ctx `, g.contextPkg.Use(), `.Context, dst []*`, message.Name, `, args ... interface{}) ([]*`, message.Name, `, error) {`)
+	g.P(`rows, err := s.Query(ctx, args...)`)
 	g.P(`if err != nil { return nil, err }`)
 	g.P(`defer rows.Close()`)
 	g.P(`for rows.Next() {`)
@@ -781,8 +820,8 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`return dst, nil`)
 	g.P(`}`)
 
-	g.P(`func (s *`, unexport(*message.Name), `Stmt) SelectMessageSlice(dst []interface{}, args ... interface{}) ([]interface{}, error) {`)
-	g.P(`rows, err := s.Query(args...)`)
+	g.P(`func (s *`, unexport(*message.Name), `Stmt) SelectMessageSlice(ctx `, g.contextPkg.Use(), `.Context, dst []interface{}, args ... interface{}) ([]interface{}, error) {`)
+	g.P(`rows, err := s.Query(ctx, args...)`)
 	g.P(`if err != nil { return nil, err }`)
 	g.P(`defer rows.Close()`)
 	g.P(`for rows.Next() {`)
@@ -797,23 +836,39 @@ func (g *gensql) generateStmt(file *generator.FileDescriptor, message *generator
 	g.P(`}`)
 
 	g.P(`func (s *`, unexport(*message.Name), `Stmt) ForTx(tx *`, g.sqlPkg.Use(), `.Tx) `, message.Name, `Stmt {`)
-	g.P(`return &`, unexport(*message.Name), `Stmt{stmt: tx.Stmt(s.stmt), scanner: s.scanner}`)
+	g.P(`return &`, unexport(*message.Name), `Stmt{stmt: tx.Stmt(s.stmt), scanner: s.scanner, query: s.query}`)
 	g.P(`}`)
 
-	g.P(`func (s *`, unexport(*message.Name), `Execer) Exec(args ... interface{}) (`, g.sqlPkg.Use(), `.Result, error) {`)
-	g.P(`return s.stmt.Exec(args...)`)
+	g.P(`func (s *`, unexport(*message.Name), `Execer) Exec(ctx `, g.contextPkg.Use(), `.Context,args ... interface{}) (`, g.sqlPkg.Use(), `.Result, error) {`)
+	g.P(`span, _ := `, g.tracePkg.Use(), `.New(ctx, "Exec("+s.query+")")`)
+	g.P(`defer span.Close()`)
+	g.P(`res, err := s.stmt.Exec(args...)`)
+	g.P(`if err != nil { span.Error(err) }`)
+	g.P(`return res, err`)
 	g.P(`}`)
 
 	g.P(`func (s *`, unexport(*message.Name), `Execer) ForTx(tx *`, g.sqlPkg.Use(), `.Tx) `, message.Name, `Execer {`)
-	g.P(`return &`, unexport(*message.Name), `Execer{stmt: tx.Stmt(s.stmt)}`)
+	g.P(`return &`, unexport(*message.Name), `Execer{stmt: tx.Stmt(s.stmt), query: s.query}`)
 	g.P(`}`)
 
 	g.P(`func (r *`, unexport(*message.Name), `Row) Scan(out *`, message.Name, `) error {`)
-	g.P(`return r.scanner(r.row.Scan, out)`)
+	g.P(`defer r.span.Close()`)
+	g.P(`err := r.scanner(r.row.Scan, out)`)
+	g.P(`if err != nil { r.span.Error(err) }`)
+	g.P(`return err`)
 	g.P(`}`)
 
 	g.P(`func (r *`, unexport(*message.Name), `Rows) Scan(out *`, message.Name, `) error {`)
-	g.P(`return r.scanner(r.Rows.Scan, out)`)
+	g.P(`err := r.scanner(r.Rows.Scan, out)`)
+	g.P(`if err != nil { r.span.Error(err) }`)
+	g.P(`return err`)
+	g.P(`}`)
+
+	g.P(`func (r *`, unexport(*message.Name), `Rows) Close() error {`)
+	g.P(`defer r.span.Close()`)
+	g.P(`err := r.Rows.Close()`)
+	g.P(`if err != nil { r.span.Error(err) }`)
+	g.P(`return err`)
 	g.P(`}`)
 }
 
