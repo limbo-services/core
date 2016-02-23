@@ -10,7 +10,7 @@ import (
 )
 
 func WithTracer() gogogrpc.ServerOption {
-	return gogogrpc.WithServiceDescWrapper(func(desc *grpc.ServiceDesc) {
+	return gogogrpc.WithServiceDescWrapper(func(desc *grpc.ServiceDesc, _ interface{}) {
 		for i, m := range desc.Methods {
 			desc.Methods[i] = wrapMethodWithTracer(desc, m)
 		}

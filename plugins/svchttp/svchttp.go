@@ -207,22 +207,16 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 	g.generateSwaggerSpec(file, service, apis)
 
 	origServName := service.GetName()
+	fullServName := file.GetPackage() + "." + origServName
 	servName := generator.CamelCase(origServName)
+	gatewayVarName := "_" + servName + "_gatewayDesc"
 
-	innerServerType := servName + "Server"
-	handlerName := unexport(servName) + "Handler"
+	g.gen.AddInitf("%s.RegisterGatewayDesc(&%s)", g.runtimePkg.Use(), gatewayVarName)
 
-	g.P("type ", handlerName, " struct {")
-	g.P("ss ", innerServerType)
-	g.P("}")
-	g.P()
-
-	// Register handler
-	var (
-		routerRouter = g.routerPkg.Use() + ".Router"
-	)
-	g.P(`func Register`, servName, `Gateway(router *`, routerRouter, `, ss `, innerServerType, `) {`)
-	g.P(`h := &`, handlerName, `{ss: ss}`)
+	g.P(`var `, gatewayVarName, ` = `, g.runtimePkg.Use(), `.GatewayDesc{`)
+	g.P(`ServiceName: `, strconv.Quote(fullServName), `,`)
+	g.P(`HandlerType: ((*`, servName, `Server)(nil)),`)
+	g.P(`Routes: []`, g.runtimePkg.Use(), `.RouteDesc{`)
 	for _, api := range apis {
 		_, method := api.desc, api.method
 
@@ -235,9 +229,13 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 			pattern = pattern[:idx]
 		}
 
-		handlerMethod := g.generateServerCallName(servName, method)
-		g.P(`router.Addf(`, strconv.Quote(httpMethod), `,`, strconv.Quote(pattern), `, h. `, handlerMethod, `)`)
+		g.P(`{`)
+		g.P(`Method: `, strconv.Quote(httpMethod), `,`)
+		g.P(`Pattern: `, strconv.Quote(pattern), `,`)
+		g.P(`Handler: `, g.generateServerCallName(servName, method), `,`)
+		g.P("},")
 	}
+	g.P("},")
 	g.P("}")
 	g.P()
 
@@ -281,7 +279,7 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 		handlerMethod := g.generateServerCallName(servName, method)
 		jujuErrors := g.jujuErrorsPkg.Use()
-		g.P("func (h* ", handlerName, " )", handlerMethod, "(ctx ", contextContext, ", rw ", httpResponseWriter, ", req *", httpRequest, ") error {")
+		g.P("func ", handlerMethod, "(srvDesc *", g.grpcPkg.Use(), ".ServiceDesc, srv interface{}, ctx ", contextContext, ", rw ", httpResponseWriter, ", req *", httpRequest, ") error {")
 		g.P("if req.Method != ", strconv.Quote(httpMethod), "{")
 		g.P(`  return `, jujuErrors, `.MethodNotAllowedf("expected `, httpMethod, ` request")`)
 		g.P("}")
@@ -313,8 +311,8 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 		g.P()
 
 		if !api.stream {
-			g.P(`desc := &`, api.descName, `.Methods[`, api.index, `]`)
-			g.P(`output, err := desc.Handler(h.ss, stream.Context(), stream.RecvMsg)`)
+			g.P(`desc := &srvDesc.Methods[`, api.index, `]`)
+			g.P(`output, err := desc.Handler(srv, stream.Context(), stream.RecvMsg)`)
 			g.P(`if err == nil && output == nil {`)
 			g.P(`err = `, g.grpcPkg.Use(), `.Errorf(`, g.grpcCodesPkg.Use(), `.Internal, "internal server error")`)
 			g.P(`}`)
@@ -322,8 +320,8 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 			g.P(`err = stream.SendMsg(output)`)
 			g.P(`}`)
 		} else {
-			g.P(`desc := &`, api.descName, `.Streams[`, api.index, `]`)
-			g.P(`err = desc.Handler(h.ss, stream)`)
+			g.P(`desc := &srvDesc.Streams[`, api.index, `]`)
+			g.P(`err = desc.Handler(srv, stream)`)
 		}
 		g.P(`if err != nil {`)
 		g.P(`stream.SetError(err)`)

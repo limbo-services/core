@@ -13,19 +13,6 @@ import (
 	"github.com/apex/log"
 )
 
-// func RenderMessageJSON(w http.ResponseWriter, code int, msg proto.Message) {
-// 	const ContentType = "Content-Type"
-// 	const JSONType = "application/json; charset=utf-8"
-//
-// 	w.Header().Set(ContentType, JSONType)
-// 	w.WriteHeader(code)
-//
-// 	err := json.NewEncoder(w).Encode(msg)
-// 	if err != nil {
-// 		log.WithError(err).Error("failed to marshal GRPC gateway response")
-// 	}
-// }
-
 const metadataHeaderPrefix = "Grpc-Metadata-"
 
 type grpcGatewayFlag struct{}
