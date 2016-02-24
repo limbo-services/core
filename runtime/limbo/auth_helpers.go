@@ -1,7 +1,6 @@
 package limbo
 
 import (
-	"fmt"
 	"sort"
 	"strings"
 
@@ -94,28 +93,4 @@ func (base *AuthzRule) Inherit(r *AuthzRule) *AuthzRule {
 	}
 
 	return r
-}
-
-var registeredScopes = map[string][]string{}
-
-func RegisterAuthScope(pkg, caller, context, scope string) {
-	var key string
-	if context != "" {
-		key = fmt.Sprintf("/%s/%s/%s", pkg, caller, context)
-	} else {
-		key = fmt.Sprintf("/%s/%s", pkg, caller)
-	}
-
-	registeredScopes[key] = append(registeredScopes[key], scope)
-}
-
-func LookupAuthScopes(pkg, caller, context string) []string {
-	var key string
-	if context != "" {
-		key = fmt.Sprintf("/%s/%s/%s", pkg, caller, context)
-	} else {
-		key = fmt.Sprintf("/%s/%s", pkg, caller)
-	}
-
-	return registeredScopes[key]
 }

@@ -2,8 +2,8 @@ package svcauth
 
 import (
 	"fmt"
-	"path"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/limbo-services/protobuf/gogoproto"
@@ -101,162 +101,158 @@ func (g *svcauth) generateService(file *generator.FileDescriptor, service *pb.Se
 	}
 
 	origServName := service.GetName()
+	fullServName := file.GetPackage() + "." + origServName
 	servName := generator.CamelCase(origServName)
+	authDescVarName := "_" + servName + "_authDesc"
 
-	// Server interface.
-	innerServerType := servName + "Server"
-	serverType := unexport(servName) + "ServerAuthGuard"
-	g.P("type ", serverType, " struct {")
-	g.P("authenticator ", innerServerType, "Auth")
-	g.P("inner ", innerServerType)
-	g.P("}")
-	g.P()
+	methodsByName := make(map[*pb.MethodDescriptorProto]*authMethod)
+	for _, m := range methods {
+		methodsByName[m.method] = m
+	}
 
-	g.P("var _ ", innerServerType, " = (*", serverType, ")(nil)")
-	g.P()
+	g.gen.AddInitf("%s.RegisterServiceAuthDesc(&%s)", g.runtimePkg.Use(), authDescVarName)
 
-	g.P("func New", servName, "ServerAuthGuard(inner ", innerServerType, `, auth `, innerServerType, `Auth) `, innerServerType, " {")
-	g.P("return &", serverType, "{inner: inner, authenticator: auth}")
-	g.P("}")
-	g.P()
+	var interfaceMethods []string
 
-	g.P(`type `, innerServerType, `Auth interface {`)
-	var seenCallerTypes = map[string]bool{}
-	for _, authMethod := range methods {
-		method, authnInfo := authMethod.method, authMethod.Authn
-
-		if authnInfo == nil {
+	g.P(`var `, authDescVarName, ` = `, g.runtimePkg.Use(), `.ServiceAuthDesc{`)
+	g.P(`ServiceName: `, strconv.Quote(fullServName), `,`)
+	g.P(`HandlerType: ((*`, servName, `Server)(nil)),`)
+	g.P(`AuthHandlerType: ((*`, servName, `ServerAuth)(nil)),`)
+	g.P(`Methods: []`, g.runtimePkg.Use(), `.MethodAuthDesc{`)
+	for _, method := range service.Method {
+		if method.GetServerStreaming() || method.GetClientStreaming() {
 			continue
 		}
-
-		inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
-		var callerType = g.lookupMessageType(inputType, authnInfo.Caller)
-		shortCallerType := toShort(callerType)
-
-		if !seenCallerTypes[shortCallerType] {
-			seenCallerTypes[shortCallerType] = true
-			g.P(`AuthenticateAs`, shortCallerType, `(ctx `, g.contextPkg.Use(), `.Context, strategies []string, caller *`, callerType, `) error`)
-		}
+		g.P(`{`)
+		g.P(`MethodName: `, strconv.Quote(method.GetName()), `,`)
+		g.generateDesc(servName, method, methodsByName[method], &interfaceMethods)
+		g.P("},")
 	}
-	g.P(``)
-	authzContexts := g.lookupAuthzContexts(methods)
-	for _, ctx := range authzContexts {
-		g.P(`// Scopes:`)
-		for _, scope := range ctx.Scopes {
-			g.P(`// - `, scope)
+	g.P("},")
+	g.P(`Streams: []`, g.runtimePkg.Use(), `.StreamAuthDesc{`)
+	for _, method := range service.Method {
+		if !method.GetServerStreaming() && !method.GetClientStreaming() {
+			continue
 		}
-		if ctx.ContextType != "" {
-			g.P(`Authorize`, ctx.ShortCallerType, `For`, ctx.ShortContextType, `(ctx `, g.contextPkg.Use(), `.Context, scope string, caller *`, ctx.CallerType, `, context *`, ctx.ContextType, `) error`)
-		} else {
-			g.P(`Authorize`, ctx.ShortCallerType, `(ctx `, g.contextPkg.Use(), `.Context, scope string, caller *`, ctx.CallerType, `) error`)
-		}
+		g.P(`{`)
+		g.P(`StreamName: `, strconv.Quote(method.GetName()), `,`)
+		g.generateDesc(servName, method, methodsByName[method], &interfaceMethods)
+		g.P("},")
 	}
-	g.P(`}`)
-	g.P("")
+	g.P("},")
+	g.P("}")
+	g.P()
 
-	for _, ctx := range authzContexts {
-		for _, scope := range ctx.Scopes {
-			g.gen.AddInitf("%s.RegisterAuthScope(%q, %q, %q, %q)", g.runtimePkg.Use(), file.GetPackage(), ctx.ShortCallerType, ctx.ShortContextType, scope)
-		}
-	}
-
-	// Server handler implementations.
-	var rules = map[string]int{}
-	g.P("var (")
-	for _, authMethod := range methods {
-		authnInfo, authzInfo := authMethod.Authn, authMethod.Authz
-		var rule string
-
-		if authnInfo != nil && len(authnInfo.Strategies) > 0 {
-			rule = fmt.Sprintf("%#v", authnInfo.Strategies)
-		} else {
-			rule = "[]string{}"
-		}
-		if id, found := rules[rule]; !found {
-			id = len(rules) + 1
-			g.P("authRule_", servName, "_", id, " = ", rule)
-			rules[rule] = id
-			authMethod.authnRuleID = id
-		} else {
-			authMethod.authnRuleID = id
-		}
-
-		if authzInfo != nil {
-			rule = fmt.Sprintf("%#v", authzInfo.Scope)
-		} else {
-			rule = `""`
-		}
-		if id, found := rules[rule]; !found {
-			id = len(rules) + 1
-			g.P("authRule_", servName, "_", id, " = ", rule)
-			rules[rule] = id
-			authMethod.authzRuleID = id
-		} else {
-			authMethod.authzRuleID = id
-		}
-	}
-	g.P(")")
-	g.P("")
-
-	// Server handler implementations.
-	for _, authMethod := range methods {
-		method, authnInfo, authzInfo := authMethod.method, authMethod.Authn, authMethod.Authz
-
-		g.P("func (s *", serverType, ") ", g.generateServerSignature(servName, method), " {")
-
-		if authnInfo != nil {
-			inputType, _ := g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
-			var callerType = g.lookupMessageType(inputType, authnInfo.Caller)
-			shortCallerType := toShort(callerType)
-
-			g.P("var (")
-			if method.GetServerStreaming() || method.GetClientStreaming() {
-				g.P("ctx = stream.Context()")
-			}
-			g.P(`caller `, callerType)
-			if authzInfo != nil && authzInfo.Context != "" {
-				var contextType = g.lookupMessageType(inputType, authzInfo.Context)
-				g.P(`context *`, contextType)
-			}
-			g.P(")")
-
-			// Authenticate
-			g.P("if err := s.authenticator.AuthenticateAs", shortCallerType, "(ctx, ", "authRule_", servName, "_", authMethod.authnRuleID, ", &caller); err != nil {")
-			if !method.GetServerStreaming() && !method.GetClientStreaming() {
-				g.P("return nil, err")
-			} else {
-				g.P("return err")
-			}
-			g.P("}")
-			g.setMessage(inputType, authnInfo.Caller, "input", "caller", true)
-
-			if authzInfo != nil {
-				var methodName string
-				var args string
-				if authzInfo.Context != "" {
-					var contextType = g.lookupMessageType(inputType, authzInfo.Context)
-					shortContextType := toShort(contextType)
-					methodName = `Authorize` + shortCallerType + `For` + shortContextType
-					args = "&caller, context"
-					g.getMessage(inputType, authzInfo.Context, "input", "context", true)
-				} else {
-					methodName = `Authorize` + shortCallerType
-					args = "&caller"
-				}
-				g.P("if err := s.authenticator.", methodName, "(ctx, ", "authRule_", servName, "_", authMethod.authzRuleID, ", ", args, "); err != nil {")
-				if !method.GetServerStreaming() && !method.GetClientStreaming() {
-					g.P("return nil, err")
-				} else {
-					g.P("return err")
-				}
-				g.P("}")
-				g.P("")
+	if len(interfaceMethods) > 0 {
+		sort.Strings(interfaceMethods)
+		last := ""
+		g.P(`type `, servName, `ServerAuth interface {`)
+		for _, sig := range interfaceMethods {
+			if sig != last {
+				last = sig
+				g.P(sig)
 			}
 		}
+		g.P(`}`)
+	}
+}
 
-		g.P("return s.inner.", g.generateServerCall(servName, method))
-		g.P("}")
-		g.P()
+func (g *svcauth) generateDesc(servName string, method *pb.MethodDescriptorProto, authMethod *authMethod, interfaceMethods *[]string) {
+	emittedCaller := false
+	if authMethod != nil && authMethod.Authn != nil {
+		var (
+			inputType, _    = g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
+			callerType      = g.lookupMessageType(inputType, authMethod.Authn.Caller)
+			shortCallerType = toShort(callerType)
+		)
+
+		g.P(`Strategies: []string{`)
+		for _, s := range authMethod.Authn.Strategies {
+			g.P(strconv.Quote(s), `,`)
+		}
+		g.P(`},`)
+
+		emittedCaller = true
+		g.P(`CallerType: ((*`, callerType, `)(nil)),`)
+		g.P(`GetCaller: func(msg interface{}) interface{} {`)
+		g.P(`var (`)
+		g.P(`input = msg.(*`, g.typeName(method.GetInputType()), `)`)
+		g.P(`caller *`, callerType)
+		g.P(`)`)
+		g.getMessage(inputType, authMethod.Authn.Caller, "input", "caller", true)
+		g.P(`if caller == nil {`)
+		g.P(`caller = &`, callerType, `{}`)
+		g.P(`}`)
+		g.P(`return caller`)
+		g.P(`},`)
+		g.P(`SetCaller: func(msg interface{}, v interface{}) {`)
+		g.P(`var (`)
+		g.P(`input = msg.(*`, g.typeName(method.GetInputType()), `)`)
+		g.P(`caller = v.(*`, callerType, `)`)
+		g.P(`)`)
+		g.setMessage(inputType, authMethod.Authn.Caller, "input", "caller", true)
+		g.P(`},`)
+		g.P(`Authenticate: func(h interface{}, ctx context.Context, strategies []string, c interface{}) error {`)
+		g.P(`return h.(`, servName, `ServerAuth).AuthenticateAs`, shortCallerType, `(ctx, strategies, c.(*`, callerType, `))`)
+		g.P(`},`)
+
+		*interfaceMethods = append(*interfaceMethods,
+			fmt.Sprintf("AuthenticateAs%s(%s.Context, []string, *%s) error", shortCallerType, g.contextPkg.Use(), callerType))
+	}
+	if authMethod != nil && authMethod.Authz != nil {
+		var (
+			inputType, _    = g.gen.ObjectNamed(method.GetInputType()).(*generator.Descriptor)
+			callerType      = g.lookupMessageType(inputType, authMethod.Authz.Caller)
+			shortCallerType = toShort(callerType)
+			// AuthorizeCallerForCertificateRef(ctx golang_org_x_net_context.Context, scope string, caller *Caller, context *CertificateRef) error
+			authzCallName = "Authorize" + shortCallerType
+			authzCallArgs = "ctx, scope, caller.(*" + callerType + ")"
+			authzDeclArgs = g.contextPkg.Use() + ".Context, string, *" + callerType
+		)
+
+		if !emittedCaller {
+			g.P(`CallerType: ((*`, callerType, `)(nil)),`)
+			g.P(`GetCaller: func(msg interface{}) interface{} {`)
+			g.P(`var (`)
+			g.P(`input = msg.(*`, g.typeName(method.GetInputType()), `)`)
+			g.P(`caller *`, callerType)
+			g.P(`)`)
+			g.getMessage(inputType, authMethod.Authz.Caller, "input", "caller", true)
+			g.P(`if caller == nil {`)
+			g.P(`caller = &`, callerType, `{}`)
+			g.P(`}`)
+			g.P(`return caller`)
+			g.P(`},`)
+		}
+
+		g.P(`Scope: `, strconv.Quote(authMethod.Authz.Scope), `,`)
+
+		if authMethod.Authz.Context != "" {
+			var (
+				contextType      = g.lookupMessageType(inputType, authMethod.Authz.Context)
+				shortContextType = toShort(contextType)
+			)
+			authzCallName += "For" + shortContextType
+			authzCallArgs += ", context.(*" + contextType + ")"
+			authzDeclArgs += ", *" + contextType
+
+			g.P(`ContextType: ((*`, contextType, `)(nil)),`)
+			g.P(`GetContext: func(msg interface{}) interface{} {`)
+			g.P(`var (`)
+			g.P(`input = msg.(*`, g.typeName(method.GetInputType()), `)`)
+			g.P(`context *`, contextType)
+			g.P(`)`)
+			g.getMessage(inputType, authMethod.Authz.Context, "input", "context", true)
+			g.P(`return context`)
+			g.P(`},`)
+		}
+
+		g.P(`Authorize: func(h interface{}, ctx context.Context, scope string, caller, context interface{}) error {`)
+		g.P(`return h.(`, servName, `ServerAuth).`, authzCallName, `(`, authzCallArgs, `)`)
+		g.P(`},`)
+
+		*interfaceMethods = append(*interfaceMethods,
+			fmt.Sprintf("%s(%s) error", authzCallName, authzDeclArgs))
 	}
 }
 
@@ -376,8 +372,17 @@ func (g *svcauth) findMethods(file *generator.FileDescriptor, service *pb.Servic
 		{ // authz
 			v, _ := proto.GetExtension(method.Options, E_Authz)
 			authzInfo, _ = v.(*AuthzRule)
-			authzInfo = defaultAuthzInfo.Inherit(authzInfo)
-			authzInfo.SetDefaults()
+			if authzInfo == nil && defaultAuthzInfo != nil {
+				authzInfo = &AuthzRule{}
+			}
+			if authzInfo != nil {
+				authzInfo = defaultAuthzInfo.Inherit(authzInfo)
+				authzInfo.SetDefaults()
+			}
+		}
+
+		if authnInfo == nil && authzInfo == nil {
+			continue
 		}
 
 		methods = append(methods, &authMethod{
@@ -391,14 +396,6 @@ func (g *svcauth) findMethods(file *generator.FileDescriptor, service *pb.Servic
 	}
 
 	return methods
-}
-
-func authSpecFileName(name string) string {
-	ext := path.Ext(name)
-	if ext == ".proto" || ext == ".protodevel" {
-		name = name[0 : len(name)-len(ext)]
-	}
-	return name + ".auth.json"
 }
 
 func (g *svcauth) lookupMessageType(inputType *generator.Descriptor, path string) (typeName string) {
@@ -452,7 +449,7 @@ func (g *svcauth) getMessage(inputType *generator.Descriptor, path, input, outpu
 		// Get Field
 		field := inputType.GetFieldDescriptor(part)
 		if field == nil {
-			g.gen.Fail("unknown field", part, "in message", inputType.GetName())
+			g.gen.Fail("unknown field", strconv.Quote(part), "in message", inputType.GetName())
 		}
 		if !field.IsMessage() {
 			g.gen.Fail("expected a message")
@@ -487,9 +484,11 @@ func (g *svcauth) getMessage(inputType *generator.Descriptor, path, input, outpu
 		}
 	}
 }
+
 func (g *svcauth) setMessage(inputType *generator.Descriptor, path, input, output string, inputIsNullable bool) {
 	var (
-		goPath string
+		goPath           string
+		outputIsNullable bool
 	)
 
 	goPath = input
@@ -531,9 +530,19 @@ func (g *svcauth) setMessage(inputType *generator.Descriptor, path, input, outpu
 			g.P(goPath, `= &`, g.gen.TypeName(inputType), `{}`)
 			g.P(`}`)
 		}
+
+		if gogoproto.IsNullable(field) {
+			outputIsNullable = true
+		} else {
+			outputIsNullable = false
+		}
 	}
 
-	g.P(goPath, ` = &`, output)
+	if outputIsNullable {
+		g.P(goPath, ` = `, output)
+	} else {
+		g.P(goPath, ` = &`, output)
+	}
 }
 
 type authzContext struct {

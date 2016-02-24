@@ -20,8 +20,8 @@ message ModelDescriptor {
 }
 
 message ColumnDescriptor {
-  string name = 1;
-  bool   ignore = 2;
+  string name = 1;         // set a custom column name
+  bool   ignore = 2;       // ignore this field
   string message_type = 3;
   string field_name = 4;
   string joined_with = 5;
