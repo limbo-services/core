@@ -49,6 +49,10 @@ func (g *validation) GenerateImports(file *generator.FileDescriptor) {
 }
 
 func (g *validation) generateValidator(file *generator.FileDescriptor, msg *generator.Descriptor) {
+	if msg.GetOptions().GetMapEntry() {
+		return
+	}
+
 	g.P(`func (msg *`, msg.Name, `) Validate() error {`)
 
 	var patterns = map[string]string{}
@@ -141,7 +145,10 @@ func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb
 		}
 	}
 
-	if field.IsRepeated() {
+	if g.gen.IsMap(field) {
+		// g.gen.GetMapKeyField(field*descriptor.FieldDescriptorProto, keyField*descriptor.FieldDescriptorProto)
+
+	} else if field.IsRepeated() {
 		g.P(`for _, value :=range msg.`, fieldName, `{`)
 		if gogoproto.IsNullable(field) {
 			g.P(`if value != nil {`)
