@@ -7,15 +7,11 @@ import "github.com/limbo-services/protobuf/gogoproto/gogo.proto";
 
 message HttpRule {
 
-  enum Endpoint {
-    MASTER = 0;
-    CDN = 1;
-    APP = 2;
-  }
-
   bool paged = 1;
   uint32 pageSize = 2;
-  repeated HttpRule alternatives = 3;
+  repeated string tags = 3;
+
+  repeated HttpRule alternatives = 200;
 
   oneof pattern {
     string get = 101;

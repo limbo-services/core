@@ -5,17 +5,30 @@ import (
 	"net/http"
 	"strings"
 
+	"github.com/apex/log"
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/apex/log"
+	"github.com/limbo-services/protobuf/proto"
+	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
 )
 
 const metadataHeaderPrefix = "Grpc-Metadata-"
 
 type grpcGatewayFlag struct{}
+
+func GetHTTPRule(method *pb.MethodDescriptorProto) *HttpRule {
+	if method.Options == nil {
+		return nil
+	}
+	v, _ := proto.GetExtension(method.Options, E_Http)
+	if v == nil {
+		return nil
+	}
+	return v.(*HttpRule)
+}
 
 /*
 AnnotateContext adds context information such as metadata from the request.

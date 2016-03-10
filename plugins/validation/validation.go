@@ -53,42 +53,34 @@ func (g *validation) generateValidator(file *generator.FileDescriptor, msg *gene
 		return
 	}
 
-	g.P(`func (msg *`, msg.Name, `) Validate() error {`)
+	g.P(`func (msg *`, g.gen.TypeName(msg), `) Validate() error {`)
 
 	var patterns = map[string]string{}
 
 	for idx, field := range msg.Field {
-
-		if limbo.IsRequiredProperty(field) {
-			g.generateRequiredTest(msg, field)
+		if field.OneofIndex != nil {
+			continue
 		}
 
-		if n, ok := limbo.GetMinItems(field); ok {
-			g.generateMinItemsTest(msg, field, int(n))
-		}
+		fieldName := "msg." + g.gen.GetFieldName(msg, field)
+		g.generateTests(msg, field, fieldName, idx, patterns)
+	}
 
-		if n, ok := limbo.GetMaxItems(field); ok {
-			g.generateMaxItemsTest(msg, field, int(n))
-		}
+	for oneofIdx, oneof := range msg.OneofDecl {
+		g.P(`switch c := msg.Get`, generator.CamelCase(oneof.GetName()), `().(type) {`)
+		for idx, field := range msg.Field {
+			if field.OneofIndex == nil {
+				continue
+			}
+			if *field.OneofIndex != int32(oneofIdx) {
+				continue
+			}
 
-		if pattern, ok := limbo.GetPattern(field); ok {
-			patternVar := fmt.Sprintf("valPattern_%s_%d", msg.GetName(), idx)
-			patterns[patternVar] = pattern
-			g.generatePatternTest(msg, field, pattern, patternVar)
+			g.P(`case *`, g.gen.OneOfTypeName(msg, field), `:`)
+			fieldName := "c." + g.gen.GetOneOfFieldName(msg, field)
+			g.generateTests(msg, field, fieldName, idx, patterns)
 		}
-
-		if n, ok := limbo.GetMinLength(field); ok {
-			g.generateMinLengthTest(msg, field, int(n))
-		}
-
-		if n, ok := limbo.GetMaxLength(field); ok {
-			g.generateMaxLengthTest(msg, field, int(n))
-		}
-
-		if field.GetType() == pb.FieldDescriptorProto_TYPE_MESSAGE {
-			g.generateSubMessageTest(msg, field)
-		}
-
+		g.P(`}`)
 	}
 
 	g.P(`return nil`)
@@ -101,11 +93,44 @@ func (g *validation) generateValidator(file *generator.FileDescriptor, msg *gene
 	g.P(``)
 }
 
-func (g *validation) generateRequiredTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto) {
-	fieldName := g.gen.GetFieldName(msg, field)
+func (g *validation) generateTests(msg *generator.Descriptor, field *pb.FieldDescriptorProto, fieldName string, idx int, patterns map[string]string) {
+
+	if limbo.IsRequiredProperty(field) {
+		g.generateRequiredTest(msg, field, fieldName)
+	}
+
+	if n, ok := limbo.GetMinItems(field); ok {
+		g.generateMinItemsTest(msg, field, fieldName, int(n))
+	}
+
+	if n, ok := limbo.GetMaxItems(field); ok {
+		g.generateMaxItemsTest(msg, field, fieldName, int(n))
+	}
+
+	if pattern, ok := limbo.GetPattern(field); ok {
+		patternVar := fmt.Sprintf("valPattern_%s_%d", msg.GetName(), idx)
+		patterns[patternVar] = pattern
+		g.generatePatternTest(msg, field, fieldName, pattern, patternVar)
+	}
+
+	if n, ok := limbo.GetMinLength(field); ok {
+		g.generateMinLengthTest(msg, field, fieldName, int(n))
+	}
+
+	if n, ok := limbo.GetMaxLength(field); ok {
+		g.generateMaxLengthTest(msg, field, fieldName, int(n))
+	}
+
+	if field.GetType() == pb.FieldDescriptorProto_TYPE_MESSAGE {
+		g.generateSubMessageTest(msg, field, fieldName)
+	}
+
+}
+
+func (g *validation) generateRequiredTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, fieldName string) {
 
 	if field.IsRepeated() {
-		g.P(`if msg.`, fieldName, ` == nil || len(msg.`, fieldName, `) == 0 {`)
+		g.P(`if `, fieldName, ` == nil || len(`, fieldName, `) == 0 {`)
 		g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` is required")`)
 		g.P(`}`)
 		return
@@ -113,16 +138,16 @@ func (g *validation) generateRequiredTest(msg *generator.Descriptor, field *pb.F
 
 	switch field.GetType() {
 	case pb.FieldDescriptorProto_TYPE_BYTES:
-		g.P(`if msg.`, fieldName, ` == nil || len(msg.`, fieldName, `) == 0 {`)
+		g.P(`if `, fieldName, ` == nil || len(`, fieldName, `) == 0 {`)
 		g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` is required")`)
 		g.P(`}`)
 	case pb.FieldDescriptorProto_TYPE_STRING:
-		g.P(`if msg.`, fieldName, ` == "" {`)
+		g.P(`if `, fieldName, ` == "" {`)
 		g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` is required")`)
 		g.P(`}`)
 	case pb.FieldDescriptorProto_TYPE_MESSAGE:
 		if gogoproto.IsNullable(field) {
-			g.P(`if msg.`, fieldName, ` == nil {`)
+			g.P(`if `, fieldName, ` == nil {`)
 			g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` is required")`)
 			g.P(`}`)
 		}
@@ -130,8 +155,7 @@ func (g *validation) generateRequiredTest(msg *generator.Descriptor, field *pb.F
 
 }
 
-func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto) {
-	fieldName := g.gen.GetFieldName(msg, field)
+func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, fieldName string) {
 
 	var casttyp = "value"
 	var typ = g.gen.TypeName(g.gen.ObjectNamed(field.GetTypeName()))
@@ -149,7 +173,7 @@ func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb
 		// g.gen.GetMapKeyField(field*descriptor.FieldDescriptorProto, keyField*descriptor.FieldDescriptorProto)
 
 	} else if field.IsRepeated() {
-		g.P(`for _, value :=range msg.`, fieldName, `{`)
+		g.P(`for _, value :=range `, fieldName, `{`)
 		if gogoproto.IsNullable(field) {
 			g.P(`if value != nil {`)
 			g.P(`if err := `, casttyp, `.Validate(); err != nil {`)
@@ -167,7 +191,7 @@ func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb
 	} else {
 		if gogoproto.IsNullable(field) {
 			g.P(`{`)
-			g.P(`value := msg.`, fieldName)
+			g.P(`value := `, fieldName)
 			g.P(`if value != nil {`)
 			g.P(`if err := `, casttyp, `.Validate(); err != nil {`)
 			g.P(`return `, g.errorsPkg.Use(), `.Trace(err)`)
@@ -176,7 +200,7 @@ func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb
 			g.P(`}`)
 		} else {
 			g.P(`{`)
-			g.P(`value := msg.`, fieldName)
+			g.P(`value := `, fieldName)
 			g.P(`if (`, typ, `{}) != `, zeroValuer, ` {`)
 			g.P(`if err := `, casttyp, `.Validate(); err != nil {`)
 			g.P(`return `, g.errorsPkg.Use(), `.Trace(err)`)
@@ -188,39 +212,36 @@ func (g *validation) generateSubMessageTest(msg *generator.Descriptor, field *pb
 
 }
 
-func (g *validation) generateMinItemsTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, minItems int) {
-	fieldName := g.gen.GetFieldName(msg, field)
+func (g *validation) generateMinItemsTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, fieldName string, minItems int) {
 
 	if !field.IsRepeated() {
 		g.gen.Fail("limbo.minItems can only be used on repeated fields.")
 	}
 
-	g.P(`if len(msg.`, fieldName, `) < `, minItems, ` {`)
-	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("number of items in `, field.Name, ` (%q) is to small (minimum: `, minItems, `)", len(msg.`, fieldName, `))`)
+	g.P(`if len(`, fieldName, `) < `, minItems, ` {`)
+	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("number of items in `, field.Name, ` (%q) is to small (minimum: `, minItems, `)", len(`, fieldName, `))`)
 	g.P(`}`)
 }
 
-func (g *validation) generateMaxItemsTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, maxItems int) {
-	fieldName := g.gen.GetFieldName(msg, field)
+func (g *validation) generateMaxItemsTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, fieldName string, maxItems int) {
 
 	if !field.IsRepeated() {
 		g.gen.Fail("limbo.maxItems can only be used on repeated fields.")
 	}
 
-	g.P(`if len(msg.`, fieldName, `) < `, maxItems, ` {`)
-	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("number of items in `, field.Name, ` (%q) is to small (maximum: `, maxItems, `)", len(msg.`, fieldName, `))`)
+	g.P(`if len(`, fieldName, `) < `, maxItems, ` {`)
+	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("number of items in `, field.Name, ` (%q) is to small (maximum: `, maxItems, `)", len(`, fieldName, `))`)
 	g.P(`}`)
 }
 
-func (g *validation) generateMinLengthTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, minLength int) {
-	fieldName := g.gen.GetFieldName(msg, field)
+func (g *validation) generateMinLengthTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, fieldName string, minLength int) {
 
 	if field.GetType() != pb.FieldDescriptorProto_TYPE_STRING {
 		g.gen.Fail("limbo.minLength can only be used on string fields.")
 	}
 
 	if field.IsRepeated() {
-		g.P(`for idx, value :=range msg.`, fieldName, `{`)
+		g.P(`for idx, value :=range `, fieldName, `{`)
 		g.P(`if len(value) < `, minLength, ` {`)
 		g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, `[%d] (%q) is to short (minimum length: `, minLength, `)", idx, value)`)
 		g.P(`}`)
@@ -228,21 +249,20 @@ func (g *validation) generateMinLengthTest(msg *generator.Descriptor, field *pb.
 		return
 	}
 
-	g.P(`if len(msg.`, fieldName, `) < `, minLength, ` {`)
-	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` (%q) is to short (minimum length: `, minLength, `)", msg.`, fieldName, `)`)
+	g.P(`if len(`, fieldName, `) < `, minLength, ` {`)
+	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` (%q) is to short (minimum length: `, minLength, `)", `, fieldName, `)`)
 	g.P(`}`)
 
 }
 
-func (g *validation) generateMaxLengthTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, maxLength int) {
-	fieldName := g.gen.GetFieldName(msg, field)
+func (g *validation) generateMaxLengthTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, fieldName string, maxLength int) {
 
 	if field.GetType() != pb.FieldDescriptorProto_TYPE_STRING {
 		g.gen.Fail("limbo.maxLength can only be used on string fields.")
 	}
 
 	if field.IsRepeated() {
-		g.P(`for idx, value :=range msg.`, fieldName, `{`)
+		g.P(`for idx, value :=range `, fieldName, `{`)
 		g.P(`if len(value) > `, maxLength, ` {`)
 		g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, `[%d] (%q) is to long (maximum length: `, maxLength, `)", idx, value)`)
 		g.P(`}`)
@@ -250,21 +270,20 @@ func (g *validation) generateMaxLengthTest(msg *generator.Descriptor, field *pb.
 		return
 	}
 
-	g.P(`if len(msg.`, fieldName, `) > `, maxLength, ` {`)
-	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` (%q) is to long (maximum length: `, maxLength, `)", msg.`, fieldName, `)`)
+	g.P(`if len(`, fieldName, `) > `, maxLength, ` {`)
+	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` (%q) is to long (maximum length: `, maxLength, `)", `, fieldName, `)`)
 	g.P(`}`)
 
 }
 
-func (g *validation) generatePatternTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, pattern, patternVar string) {
-	fieldName := g.gen.GetFieldName(msg, field)
+func (g *validation) generatePatternTest(msg *generator.Descriptor, field *pb.FieldDescriptorProto, fieldName string, pattern, patternVar string) {
 
 	if field.GetType() != pb.FieldDescriptorProto_TYPE_STRING {
 		g.gen.Fail("limbo.pattern can only be used on string fields.")
 	}
 
 	if field.IsRepeated() {
-		g.P(`for idx, value :=range msg.`, fieldName, `{`)
+		g.P(`for idx, value :=range `, fieldName, `{`)
 		g.P(`if !`, patternVar, `.MatchString(value) {`)
 		g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, `[%d] (%q) does not match pattern %s", idx, value, `, strconv.Quote(pattern), `)`)
 		g.P(`}`)
@@ -272,8 +291,8 @@ func (g *validation) generatePatternTest(msg *generator.Descriptor, field *pb.Fi
 		return
 	}
 
-	g.P(`if !`, patternVar, `.MatchString(msg.`, fieldName, `) {`)
-	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` (%q) does not match pattern %s", msg.`, fieldName, `, `, strconv.Quote(pattern), `)`)
+	g.P(`if !`, patternVar, `.MatchString(`, fieldName, `) {`)
+	g.P(`return `, g.errorsPkg.Use(), `.NotValidf("`, field.Name, ` (%q) does not match pattern %s", `, fieldName, `, `, strconv.Quote(pattern), `)`)
 	g.P(`}`)
 
 }

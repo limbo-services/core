@@ -1,6 +1,10 @@
 package protobuf
 
-import "time"
+import (
+	"time"
+
+	"github.com/limbo-services/core/runtime/limbo"
+)
 
 func (t *Timestamp) Validate() error {
 	return nil
@@ -32,4 +36,18 @@ func (t *Timestamp) inject(sec int64, nsec int32) {
 	}
 
 	*t = Timestamp(time.Unix(sec, int64(nsec)))
+}
+
+func init() {
+	limbo.RegisterSchemaDefinitions([]limbo.SchemaDefinition{
+		{
+			Name: "google.protobuf.Timestamp",
+			Definition: []byte(`
+				{
+					"type": "string",
+					"format": "date-time"
+				}
+			`),
+		},
+	})
 }

@@ -1,8 +1,10 @@
 package jsonschema
 
 import (
+	"crypto/sha1"
 	"encoding/json"
 	"fmt"
+	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -12,6 +14,7 @@ import (
 	"github.com/limbo-services/protobuf/protoc-gen-gogo/generator"
 
 	"github.com/limbo-services/core/runtime/limbo"
+	"github.com/limbo-services/core/runtime/router"
 )
 
 func init() {
@@ -22,11 +25,18 @@ func init() {
 // plugin architecture.  It generates bindings for gRPC support.
 type jsonschema struct {
 	gen          *generator.Generator
+	operations   []*operationDecl
 	definitions  map[string]interface{}
 	dependencies map[string][]string
 	imports      generator.PluginImports
 	runtimePkg   generator.Single
-	initCounter  int
+}
+
+type operationDecl struct {
+	Dependencies []string
+	Pattern      string
+	Method       string
+	Swagger      interface{}
 }
 
 // Name returns the name of this plugin, "jsonschema".
@@ -64,46 +74,78 @@ func (g *jsonschema) Generate(file *generator.FileDescriptor) {
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
 	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
+	g.operations = nil
 	g.definitions = map[string]interface{}{}
 	g.dependencies = map[string][]string{}
-
-	for i, message := range file.Messages() {
-		g.generateMessageSchema(file, message, i)
-	}
 
 	for i, enum := range file.Enums() {
 		g.generateEnumSchema(file, enum, i)
 	}
 
-	g.initCounter++
-	defVarName := fmt.Sprintf("jsonSchemaDefs%d", g.initCounter)
-	g.gen.AddInitf(`%s.RegisterSchemaDefinitions(%s)`, g.runtimePkg.Use(), defVarName)
-	g.P(`var `+defVarName+` = []`, g.runtimePkg.Use(), `.SchemaDefinition{`)
-	var definitionNames = make([]string, 0, len(g.definitions))
-	for name := range g.definitions {
-		definitionNames = append(definitionNames, name)
+	for i, message := range file.Messages() {
+		g.generateMessageSchema(file, message, i)
 	}
-	sort.Strings(definitionNames)
-	for _, name := range definitionNames {
-		def := g.definitions[name]
 
-		data, err := json.MarshalIndent(def, "\t\t", "\t")
-		if err != nil {
-			panic(err)
-		}
-		dataStr := strings.Replace(string(data), "`", "`+\"`\"+`", -1)
-
-		g.P(`{`)
-		g.P(`Name: `, strconv.Quote(name), `,`)
-		g.P(`Dependencies: []string{`)
-		for _, dep := range g.dependencies[name] {
-			g.P(strconv.Quote(dep), ",")
-		}
-		g.P(`},`)
-		g.P(`Definition: []byte(`, "`", dataStr, "`),")
-		g.P(`},`)
+	for i, service := range file.Service {
+		g.generateServiceSchema(file, service, i)
 	}
-	g.P(`}`)
+
+	if len(g.definitions) > 0 {
+		defVarName := fmt.Sprintf("jsonSchemaDefs%x", sha1.Sum([]byte(file.GetName())))
+		g.gen.AddInitf(`%s.RegisterSchemaDefinitions(%s)`, g.runtimePkg.Use(), defVarName)
+		g.P(`var `+defVarName+` = []`, g.runtimePkg.Use(), `.SchemaDefinition{`)
+		var definitionNames = make([]string, 0, len(g.definitions))
+		for name := range g.definitions {
+			definitionNames = append(definitionNames, name)
+		}
+		sort.Strings(definitionNames)
+		for _, name := range definitionNames {
+			def := g.definitions[name]
+
+			data, err := json.MarshalIndent(def, "\t\t", "\t")
+			if err != nil {
+				panic(err)
+			}
+			dataStr := strings.Replace(string(data), "`", "`+\"`\"+`", -1)
+
+			g.P(`{`)
+			g.P(`Name: `, strconv.Quote(name), `,`)
+			g.P(`Dependencies: []string{`)
+			for _, dep := range g.dependencies[name] {
+				g.P(strconv.Quote(dep), ",")
+			}
+			g.P(`},`)
+			g.P(`Definition: []byte(`, "`", dataStr, "`),")
+			g.P(`},`)
+		}
+		g.P(`}`)
+	}
+
+	if len(g.operations) > 0 {
+		defVarName := fmt.Sprintf("swaggerDefs%x", sha1.Sum([]byte(file.GetName())))
+		g.gen.AddInitf(`%s.RegisterSwaggerOperations(%s)`, g.runtimePkg.Use(), defVarName)
+		g.P(`var `+defVarName+` = []`, g.runtimePkg.Use(), `.SwaggerOperation{`)
+		for _, op := range g.operations {
+
+			data, err := json.MarshalIndent(op.Swagger, "\t\t", "\t")
+			if err != nil {
+				panic(err)
+			}
+			dataStr := strings.Replace(string(data), "`", "`+\"`\"+`", -1)
+
+			g.P(`{`)
+			g.P(`Pattern: `, strconv.Quote(op.Pattern), `,`)
+			g.P(`Method: `, strconv.Quote(op.Method), `,`)
+			g.P(`Dependencies: []string{`)
+			for _, dep := range op.Dependencies {
+				g.P(strconv.Quote(dep), ",")
+			}
+			g.P(`},`)
+			g.P(`Definition: []byte(`, "`", dataStr, "`),")
+			g.P(`},`)
+		}
+		g.P(`}`)
+	}
 }
 
 // GenerateImports generates the import declaration for this file.
@@ -122,6 +164,198 @@ func (g *jsonschema) generateMessageSchema(file *generator.FileDescriptor, msg *
 		g.definitions[typeName] = def
 		g.dependencies[typeName] = deps
 	}
+}
+
+func (g *jsonschema) generateServiceSchema(file *generator.FileDescriptor, srv *pb.ServiceDescriptorProto, index int) {
+	path := fmt.Sprintf("6,%d", index)
+
+	for idx, method := range srv.GetMethod() {
+		rule := limbo.GetHTTPRule(method)
+		if rule == nil {
+			continue
+		}
+
+		comment := g.gen.Comments(fmt.Sprintf("%s,%d,%d", path, 2, idx))
+		comment = strings.TrimSpace(comment)
+
+		g.generateServiceMethodSchema(file, srv, method, rule, comment)
+	}
+
+}
+
+func (g *jsonschema) generateServiceMethodSchema(file *generator.FileDescriptor, srv *pb.ServiceDescriptorProto, meth *pb.MethodDescriptorProto, rule *limbo.HttpRule, comment string) {
+	var (
+		method  string
+		pattern string
+	)
+
+	switch p := rule.GetPattern().(type) {
+	case *limbo.HttpRule_Delete:
+		method = "DELETE"
+		pattern = p.Delete
+	case *limbo.HttpRule_Get:
+		method = "GET"
+		pattern = p.Get
+	case *limbo.HttpRule_Post:
+		method = "POST"
+		pattern = p.Post
+	case *limbo.HttpRule_Patch:
+		method = "PATCH"
+		pattern = p.Patch
+	case *limbo.HttpRule_Put:
+		method = "PUT"
+		pattern = p.Put
+	default:
+		panic("unknown pattern type")
+	}
+
+	query := ""
+	if idx := strings.IndexByte(pattern, '?'); idx >= 0 {
+		query = pattern[idx+1:]
+		pattern = pattern[:idx]
+	}
+
+	path := regexp.MustCompile("\\{.+\\}").ReplaceAllStringFunc(pattern, func(v string) string {
+		return strings.Replace(v, ".", "_", -1)
+	})
+
+	input := strings.TrimPrefix(meth.GetInputType(), ".")
+	output := strings.TrimPrefix(meth.GetOutputType(), ".")
+
+	var outputSchema interface{} = map[string]string{"$ref": output}
+	if meth.GetServerStreaming() {
+		outputSchema = map[string]interface{}{
+			"type":  "array",
+			"items": outputSchema,
+		}
+	}
+
+	var tags = []string{srv.GetName()}
+	tags = append(tags, rule.Tags...)
+
+	op := map[string]interface{}{
+		"tags":        tags,
+		"description": comment,
+		"responses": map[string]interface{}{
+			"200": map[string]interface{}{
+				"description": "",
+				"schema":      outputSchema,
+			},
+		},
+	}
+
+	var parameters []map[string]interface{}
+
+	if params := g.collectPathParameters(pattern); len(params) > 0 {
+		parameters = append(parameters, params...)
+	}
+
+	if params := g.collectQueryParameters(query); len(params) > 0 {
+		parameters = append(parameters, params...)
+	}
+
+	if method != "HEAD" && method != "GET" && method != "OPTIONS" && method != "DELETE" {
+		parameters = append(parameters, map[string]interface{}{
+			"name": "parameters",
+			"in":   "body",
+			"schema": map[string]interface{}{
+				"$ref": input,
+			},
+		})
+	}
+
+	if len(parameters) > 0 {
+		op["parameters"] = parameters
+	}
+
+	if scope, ok := limbo.GetScope(meth); ok {
+		op["security"] = []map[string][]string{
+			{"oauth": {scope}},
+		}
+	}
+
+	decl := &operationDecl{
+		Pattern:      path,
+		Method:       method,
+		Dependencies: uniqStrings([]string{input, output}),
+		Swagger:      op,
+	}
+	g.operations = append(g.operations, decl)
+
+	// x, _ := json.MarshalIndent(op, "  ", "  ")
+	// fmt.Fprintf(os.Stderr, "%s %s:\n  %s\n", method, path, x)
+
+	for _, a := range rule.GetAlternatives() {
+		g.generateServiceMethodSchema(file, srv, meth, a, comment)
+	}
+}
+
+func (g *jsonschema) collectPathParameters(pattern string) []map[string]interface{} {
+	vars, err := router.ExtractVariables(pattern)
+	if err != nil {
+		g.gen.Error(err)
+		return nil
+	}
+
+	params := make([]map[string]interface{}, 0, len(vars))
+
+	for _, v := range vars {
+		param := map[string]interface{}{
+			"name": strings.Replace(v.Name, ".", "_", -1),
+			"in":   "path",
+			"type": "string",
+			//"format":
+		}
+
+		if v.Pattern != "" {
+			param["pattern"] = v.Pattern
+		}
+
+		if v.MinCount > 0 {
+			param["required"] = true
+			param["minItems"] = v.MinCount
+		}
+
+		if v.MaxCount > 0 {
+			param["maxItems"] = v.MaxCount
+		}
+
+		params = append(params, param)
+	}
+
+	return params
+}
+
+func (g *jsonschema) collectQueryParameters(queryString string) []map[string]interface{} {
+	if queryString == "" {
+		return nil
+	}
+
+	queryParams := map[string]string{}
+	for _, pair := range strings.SplitN(queryString, "&", -1) {
+		idx := strings.Index(pair, "={")
+		if pair[len(pair)-1] != '}' || idx < 0 {
+			g.gen.Fail("invalid query paramter")
+		}
+		queryParams[pair[:idx]] = pair[idx+2 : len(pair)-1]
+	}
+
+	params := make([]map[string]interface{}, 0, len(queryParams))
+
+	for k, v := range queryParams {
+		_ = v
+
+		p := map[string]interface{}{
+			"name": k,
+			"in":   "query",
+			"type": "string",
+			//"format":
+		}
+
+		params = append(params, p)
+	}
+
+	return params
 }
 
 func (g *jsonschema) generateEnumSchema(file *generator.FileDescriptor, enum *generator.EnumDescriptor, index int) {
@@ -148,7 +382,7 @@ func (g *jsonschema) enumToSchema(file *generator.FileDescriptor, desc *generato
 	}
 
 	return map[string]interface{}{
-		"id":    typeName,
+		// "id":    typeName,
 		"enum":  values,
 		"title": title,
 	}
@@ -278,21 +512,11 @@ func (g *jsonschema) messageToSchema(file *generator.FileDescriptor, desc *gener
 
 	{
 		schema["title"] = title
-		schema["id"] = typeName
+		// schema["id"] = typeName
 	}
 
 	{
-		sort.Strings(dependencies)
-		var last string
-		tmp := dependencies[:0]
-		for _, dep := range dependencies {
-			if dep == last {
-				continue
-			}
-			last = dep
-			tmp = append(tmp, dep)
-		}
-		dependencies = tmp
+		dependencies = uniqStrings(dependencies)
 	}
 
 	return schema, dependencies
@@ -417,4 +641,17 @@ func getJSONName(field *pb.FieldDescriptorProto) string {
 		name = field.GetName()
 	}
 	return name
+}
+
+func uniqStrings(s []string) []string {
+	sort.Strings(s)
+	var last string
+	var out = s[:0]
+	for i, v := range s {
+		if i == 0 || v != last {
+			last = v
+			out = append(out, v)
+		}
+	}
+	return out
 }

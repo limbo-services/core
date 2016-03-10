@@ -80,12 +80,6 @@ func (g *svchttp) P(args ...interface{}) { g.gen.P(args...) }
 
 // Generate generates code for the services in the given file.
 func (g *svchttp) Generate(file *generator.FileDescriptor) {
-	for i, message := range file.Messages() {
-		g.generateMessageSchema(file, message, i)
-	}
-
-	g.generateBase(file)
-
 	if len(file.FileDescriptorProto.Service) == 0 {
 		return
 	}
@@ -203,8 +197,6 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 	if len(apis) == 0 {
 		return
 	}
-
-	g.generateSwaggerSpec(file, service, apis)
 
 	origServName := service.GetName()
 	fullServName := file.GetPackage() + "." + origServName
@@ -433,22 +425,4 @@ func (g *svchttp) generateServerCall(servName string, method *pb.MethodDescripto
 	}
 
 	return methName + "(" + strings.Join(reqArgs, ", ") + ") "
-}
-
-func (g *svchttp) generateMessageSchema(file *generator.FileDescriptor, msg *generator.Descriptor, index int) {
-	spec := g.loadSwaggerSpec(file)
-	defer g.saveSwaggerSpec(file, spec)
-
-	if spec.Definitions == nil {
-		spec.Definitions = map[string]interface{}{}
-	}
-
-	typeName := file.GetPackage() + "." + strings.Join(msg.TypeName(), ".")
-	typeName = strings.TrimPrefix(typeName, ".")
-
-	msgDef := spec.Definitions[typeName]
-	if msgDef == nil {
-		msgDef = messageToSchema(g.gen, msg)
-		spec.Definitions[typeName] = msgDef
-	}
 }

@@ -33,14 +33,6 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-var E_ApiHost = &proto.ExtensionDesc{
-	ExtendedType:  (*google_protobuf.FileOptions)(nil),
-	ExtensionType: (*string)(nil),
-	Field:         51100,
-	Name:          "limbo.api_host",
-	Tag:           "bytes,51100,opt,name=api_host",
-}
-
 var E_Model = &proto.ExtensionDesc{
 	ExtendedType:  (*google_protobuf.MessageOptions)(nil),
 	ExtensionType: (*ModelDescriptor)(nil),
@@ -178,7 +170,6 @@ var E_Http = &proto.ExtensionDesc{
 }
 
 func init() {
-	proto.RegisterExtension(E_ApiHost)
 	proto.RegisterExtension(E_Model)
 	proto.RegisterExtension(E_Gosqlvaluer)
 	proto.RegisterExtension(E_Column)

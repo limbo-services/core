@@ -9,9 +9,8 @@ import "github.com/limbo-services/core/runtime/limbo/authz.proto";
 import "github.com/limbo-services/core/runtime/limbo/http.proto";
 import "github.com/limbo-services/core/runtime/limbo/sql.proto";
 
-extend google.protobuf.FileOptions {
-  optional string api_host = 51100;
-}
+/*extend google.protobuf.FileOptions {
+}*/
 
 extend google.protobuf.MessageOptions {
   optional ModelDescriptor model = 51200;

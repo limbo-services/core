@@ -14,33 +14,11 @@ var _ = proto.Marshal
 var _ = fmt.Errorf
 var _ = math.Inf
 
-type HttpRule_Endpoint int32
-
-const (
-	HttpRule_MASTER HttpRule_Endpoint = 0
-	HttpRule_CDN    HttpRule_Endpoint = 1
-	HttpRule_APP    HttpRule_Endpoint = 2
-)
-
-var HttpRule_Endpoint_name = map[int32]string{
-	0: "MASTER",
-	1: "CDN",
-	2: "APP",
-}
-var HttpRule_Endpoint_value = map[string]int32{
-	"MASTER": 0,
-	"CDN":    1,
-	"APP":    2,
-}
-
-func (x HttpRule_Endpoint) String() string {
-	return proto.EnumName(HttpRule_Endpoint_name, int32(x))
-}
-
 type HttpRule struct {
 	Paged        bool        `protobuf:"varint,1,opt,name=paged,proto3" json:"paged,omitempty"`
 	PageSize     uint32      `protobuf:"varint,2,opt,name=pageSize,proto3" json:"pageSize,omitempty"`
-	Alternatives []*HttpRule `protobuf:"bytes,3,rep,name=alternatives" json:"alternatives,omitempty"`
+	Tags         []string    `protobuf:"bytes,3,rep,name=tags" json:"tags,omitempty"`
+	Alternatives []*HttpRule `protobuf:"bytes,200,rep,name=alternatives" json:"alternatives,omitempty"`
 	// Types that are valid to be assigned to Pattern:
 	//	*HttpRule_Get
 	//	*HttpRule_Post
@@ -211,5 +189,4 @@ func _HttpRule_OneofUnmarshaler(msg proto.Message, tag, wire int, b *proto.Buffe
 
 func init() {
 	proto.RegisterType((*HttpRule)(nil), "limbo.HttpRule")
-	proto.RegisterEnum("limbo.HttpRule_Endpoint", HttpRule_Endpoint_name, HttpRule_Endpoint_value)
 }
