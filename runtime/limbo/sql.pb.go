@@ -17,18 +17,19 @@ var _ = math.Inf
 
 type ModelDescriptor struct {
 	Table       string               `protobuf:"bytes,1,opt,name=table,proto3" json:"table,omitempty"`
-	MessageType string               `protobuf:"bytes,7,opt,name=message_type,proto3" json:"message_type,omitempty"`
+	MessageType string               `protobuf:"bytes,7,opt,name=message_type,json=messageType,proto3" json:"message_type,omitempty"`
 	Scanner     []*ScannerDescriptor `protobuf:"bytes,2,rep,name=scanner" json:"scanner,omitempty"`
 	Column      []*ColumnDescriptor  `protobuf:"bytes,3,rep,name=column" json:"column,omitempty"`
 	Join        []*JoinDescriptor    `protobuf:"bytes,4,rep,name=join" json:"join,omitempty"`
-	DeepScanner []*ScannerDescriptor `protobuf:"bytes,8,rep,name=deep_scanner" json:"deep_scanner,omitempty"`
-	DeepColumn  []*ColumnDescriptor  `protobuf:"bytes,5,rep,name=deep_column" json:"deep_column,omitempty"`
-	DeepJoin    []*JoinDescriptor    `protobuf:"bytes,6,rep,name=deep_join" json:"deep_join,omitempty"`
+	DeepScanner []*ScannerDescriptor `protobuf:"bytes,8,rep,name=deep_scanner,json=deepScanner" json:"deep_scanner,omitempty"`
+	DeepColumn  []*ColumnDescriptor  `protobuf:"bytes,5,rep,name=deep_column,json=deepColumn" json:"deep_column,omitempty"`
+	DeepJoin    []*JoinDescriptor    `protobuf:"bytes,6,rep,name=deep_join,json=deepJoin" json:"deep_join,omitempty"`
 }
 
-func (m *ModelDescriptor) Reset()         { *m = ModelDescriptor{} }
-func (m *ModelDescriptor) String() string { return proto.CompactTextString(m) }
-func (*ModelDescriptor) ProtoMessage()    {}
+func (m *ModelDescriptor) Reset()                    { *m = ModelDescriptor{} }
+func (m *ModelDescriptor) String() string            { return proto.CompactTextString(m) }
+func (*ModelDescriptor) ProtoMessage()               {}
+func (*ModelDescriptor) Descriptor() ([]byte, []int) { return fileDescriptorSql, []int{0} }
 
 func (m *ModelDescriptor) GetScanner() []*ScannerDescriptor {
 	if m != nil {
@@ -75,26 +76,28 @@ func (m *ModelDescriptor) GetDeepJoin() []*JoinDescriptor {
 type ColumnDescriptor struct {
 	Name        string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Ignore      bool   `protobuf:"varint,2,opt,name=ignore,proto3" json:"ignore,omitempty"`
-	MessageType string `protobuf:"bytes,3,opt,name=message_type,proto3" json:"message_type,omitempty"`
-	FieldName   string `protobuf:"bytes,4,opt,name=field_name,proto3" json:"field_name,omitempty"`
-	JoinedWith  string `protobuf:"bytes,5,opt,name=joined_with,proto3" json:"joined_with,omitempty"`
+	MessageType string `protobuf:"bytes,3,opt,name=message_type,json=messageType,proto3" json:"message_type,omitempty"`
+	FieldName   string `protobuf:"bytes,4,opt,name=field_name,json=fieldName,proto3" json:"field_name,omitempty"`
+	JoinedWith  string `protobuf:"bytes,5,opt,name=joined_with,json=joinedWith,proto3" json:"joined_with,omitempty"`
 }
 
-func (m *ColumnDescriptor) Reset()         { *m = ColumnDescriptor{} }
-func (m *ColumnDescriptor) String() string { return proto.CompactTextString(m) }
-func (*ColumnDescriptor) ProtoMessage()    {}
+func (m *ColumnDescriptor) Reset()                    { *m = ColumnDescriptor{} }
+func (m *ColumnDescriptor) String() string            { return proto.CompactTextString(m) }
+func (*ColumnDescriptor) ProtoMessage()               {}
+func (*ColumnDescriptor) Descriptor() ([]byte, []int) { return fileDescriptorSql, []int{1} }
 
 type ScannerDescriptor struct {
-	MessageType string              `protobuf:"bytes,1,opt,name=message_type,proto3" json:"message_type,omitempty"`
+	MessageType string              `protobuf:"bytes,1,opt,name=message_type,json=messageType,proto3" json:"message_type,omitempty"`
 	Name        string              `protobuf:"bytes,2,opt,name=name,proto3" json:"name,omitempty"`
 	Fields      string              `protobuf:"bytes,3,opt,name=fields,proto3" json:"fields,omitempty"`
 	Column      []*ColumnDescriptor `protobuf:"bytes,4,rep,name=column" json:"column,omitempty"`
 	Join        []*JoinDescriptor   `protobuf:"bytes,5,rep,name=join" json:"join,omitempty"`
 }
 
-func (m *ScannerDescriptor) Reset()         { *m = ScannerDescriptor{} }
-func (m *ScannerDescriptor) String() string { return proto.CompactTextString(m) }
-func (*ScannerDescriptor) ProtoMessage()    {}
+func (m *ScannerDescriptor) Reset()                    { *m = ScannerDescriptor{} }
+func (m *ScannerDescriptor) String() string            { return proto.CompactTextString(m) }
+func (*ScannerDescriptor) ProtoMessage()               {}
+func (*ScannerDescriptor) Descriptor() ([]byte, []int) { return fileDescriptorSql, []int{2} }
 
 func (m *ScannerDescriptor) GetColumn() []*ColumnDescriptor {
 	if m != nil {
@@ -113,21 +116,56 @@ func (m *ScannerDescriptor) GetJoin() []*JoinDescriptor {
 type JoinDescriptor struct {
 	Name               string `protobuf:"bytes,1,opt,name=name,proto3" json:"name,omitempty"`
 	Key                string `protobuf:"bytes,2,opt,name=key,proto3" json:"key,omitempty"`
-	ForeignKey         string `protobuf:"bytes,3,opt,name=foreign_key,proto3" json:"foreign_key,omitempty"`
-	ForeignMessageType string `protobuf:"bytes,4,opt,name=foreign_message_type,proto3" json:"foreign_message_type,omitempty"`
-	MessageType        string `protobuf:"bytes,5,opt,name=message_type,proto3" json:"message_type,omitempty"`
-	FieldName          string `protobuf:"bytes,6,opt,name=field_name,proto3" json:"field_name,omitempty"`
-	JoinedWith         string `protobuf:"bytes,7,opt,name=joined_with,proto3" json:"joined_with,omitempty"`
+	ForeignKey         string `protobuf:"bytes,3,opt,name=foreign_key,json=foreignKey,proto3" json:"foreign_key,omitempty"`
+	ForeignMessageType string `protobuf:"bytes,4,opt,name=foreign_message_type,json=foreignMessageType,proto3" json:"foreign_message_type,omitempty"`
+	MessageType        string `protobuf:"bytes,5,opt,name=message_type,json=messageType,proto3" json:"message_type,omitempty"`
+	FieldName          string `protobuf:"bytes,6,opt,name=field_name,json=fieldName,proto3" json:"field_name,omitempty"`
+	JoinedWith         string `protobuf:"bytes,7,opt,name=joined_with,json=joinedWith,proto3" json:"joined_with,omitempty"`
 	Table              string `protobuf:"bytes,8,opt,name=table,proto3" json:"table,omitempty"`
 }
 
-func (m *JoinDescriptor) Reset()         { *m = JoinDescriptor{} }
-func (m *JoinDescriptor) String() string { return proto.CompactTextString(m) }
-func (*JoinDescriptor) ProtoMessage()    {}
+func (m *JoinDescriptor) Reset()                    { *m = JoinDescriptor{} }
+func (m *JoinDescriptor) String() string            { return proto.CompactTextString(m) }
+func (*JoinDescriptor) ProtoMessage()               {}
+func (*JoinDescriptor) Descriptor() ([]byte, []int) { return fileDescriptorSql, []int{3} }
 
 func init() {
 	proto.RegisterType((*ModelDescriptor)(nil), "limbo.ModelDescriptor")
 	proto.RegisterType((*ColumnDescriptor)(nil), "limbo.ColumnDescriptor")
 	proto.RegisterType((*ScannerDescriptor)(nil), "limbo.ScannerDescriptor")
 	proto.RegisterType((*JoinDescriptor)(nil), "limbo.JoinDescriptor")
+}
+
+var fileDescriptorSql = []byte{
+	// 475 bytes of a gzipped FileDescriptorProto
+	0x1f, 0x8b, 0x08, 0x00, 0x00, 0x09, 0x6e, 0x88, 0x02, 0xff, 0x94, 0x54, 0x4d, 0x8f, 0xd3, 0x30,
+	0x10, 0x55, 0x9a, 0x8f, 0xb6, 0xd3, 0x15, 0x2c, 0xd6, 0x02, 0xd1, 0x4a, 0x88, 0xd2, 0x53, 0x11,
+	0xa8, 0x41, 0xcb, 0x05, 0x89, 0x1b, 0x70, 0x02, 0x2d, 0x87, 0x82, 0x84, 0xc4, 0x25, 0x6a, 0x93,
+	0x69, 0x30, 0x24, 0x71, 0x89, 0x53, 0xd0, 0x5e, 0x91, 0xf8, 0x21, 0xfc, 0x11, 0x7e, 0x1b, 0xf6,
+	0xd8, 0xa1, 0x69, 0x83, 0x36, 0xe2, 0xe6, 0x79, 0xef, 0x8d, 0xfd, 0xfc, 0xc6, 0x09, 0x3c, 0xca,
+	0x79, 0xb1, 0x16, 0x0b, 0x89, 0xd5, 0x37, 0x9e, 0xa0, 0x8c, 0x12, 0x51, 0x61, 0x54, 0xed, 0xca,
+	0x9a, 0x17, 0x18, 0x11, 0x17, 0xc9, 0xaf, 0xf9, 0x62, 0x5b, 0x89, 0x5a, 0x30, 0x9f, 0x80, 0xf3,
+	0xc7, 0x47, 0x3d, 0x44, 0xae, 0x77, 0x9b, 0x28, 0x13, 0x99, 0xa0, 0x82, 0x56, 0xa6, 0xe9, 0x7c,
+	0x9a, 0x09, 0x91, 0xe5, 0xb8, 0x57, 0xa5, 0x28, 0x93, 0x8a, 0x6f, 0x6b, 0x51, 0x19, 0xc5, 0xec,
+	0xa7, 0x0b, 0x37, 0x2f, 0x45, 0x8a, 0xf9, 0xab, 0xbf, 0x0c, 0x3b, 0x03, 0xbf, 0x5e, 0xad, 0x73,
+	0x0c, 0x9d, 0xa9, 0x33, 0x1f, 0x2f, 0x4d, 0xc1, 0x1e, 0xc0, 0x49, 0x81, 0x52, 0xae, 0x32, 0x8c,
+	0xeb, 0xab, 0x2d, 0x86, 0x43, 0x22, 0x27, 0x16, 0x7b, 0xaf, 0x20, 0x76, 0x01, 0x43, 0x99, 0xac,
+	0xca, 0x12, 0xab, 0x70, 0x30, 0x75, 0xe7, 0x93, 0x8b, 0x70, 0x61, 0xec, 0xbe, 0x33, 0xe8, 0xfe,
+	0x8c, 0x65, 0x23, 0x64, 0x11, 0x04, 0x89, 0xc8, 0x77, 0x45, 0x19, 0xba, 0xd4, 0x72, 0xd7, 0xb6,
+	0xbc, 0x24, 0xb0, 0xd5, 0x61, 0x65, 0xec, 0x21, 0x78, 0x9f, 0x05, 0x2f, 0x43, 0x8f, 0xe4, 0xb7,
+	0xad, 0xfc, 0xb5, 0x82, 0x5a, 0x62, 0x92, 0xb0, 0xe7, 0x70, 0x92, 0x22, 0x6e, 0xe3, 0xc6, 0xd4,
+	0xa8, 0xc7, 0xd4, 0x44, 0xab, 0x2d, 0xcc, 0x9e, 0x01, 0x95, 0xb1, 0x75, 0xe7, 0x5f, 0xef, 0x0e,
+	0xb4, 0xd6, 0xa0, 0x2a, 0x86, 0x31, 0x75, 0x92, 0xcd, 0xe0, 0x3a, 0x9b, 0x23, 0xad, 0xd3, 0xd8,
+	0xec, 0x97, 0x03, 0xa7, 0xc7, 0x9b, 0x32, 0x06, 0x5e, 0xb9, 0x2a, 0x9a, 0x39, 0xd0, 0x9a, 0xdd,
+	0x81, 0x80, 0x67, 0xa5, 0x7a, 0x29, 0x2a, 0x62, 0x67, 0x3e, 0x5a, 0xda, 0xaa, 0x33, 0x1e, 0xb7,
+	0x3b, 0x9e, 0x7b, 0x00, 0x1b, 0x8e, 0x79, 0x1a, 0xd3, 0xa6, 0x1e, 0x09, 0xc6, 0x84, 0xbc, 0xd5,
+	0x3b, 0xdf, 0x87, 0x89, 0x76, 0x8c, 0x69, 0xfc, 0x9d, 0xd7, 0x9f, 0xd4, 0x85, 0x35, 0x0f, 0x06,
+	0xfa, 0xa0, 0x90, 0xd9, 0x6f, 0x07, 0x6e, 0x75, 0x42, 0xeb, 0x1c, 0xec, 0x74, 0x0f, 0x6e, 0xee,
+	0x31, 0x38, 0xbc, 0x07, 0x1d, 0x2d, 0xad, 0x53, 0x5b, 0xb5, 0xde, 0x83, 0xf7, 0x7f, 0xef, 0xc1,
+	0xef, 0x7d, 0x0f, 0xb3, 0x1f, 0x03, 0xb8, 0x71, 0x48, 0xfc, 0x33, 0xe2, 0x53, 0x70, 0xbf, 0xe0,
+	0x95, 0x75, 0xab, 0x97, 0x3a, 0x9a, 0x8d, 0x0a, 0x59, 0x45, 0x1d, 0x6b, 0xc6, 0x38, 0x06, 0x0b,
+	0xbd, 0x51, 0x82, 0x27, 0x70, 0xd6, 0x08, 0x0e, 0xc2, 0x30, 0x21, 0x33, 0xcb, 0x5d, 0xb6, 0x32,
+	0x39, 0x8e, 0xcd, 0xef, 0x9b, 0x57, 0xd0, 0x33, 0xaf, 0xe1, 0xf1, 0xbc, 0xf6, 0xdf, 0xf1, 0xa8,
+	0xf5, 0x1d, 0xbf, 0x18, 0x7e, 0x34, 0xbf, 0x92, 0x75, 0x40, 0x7f, 0x80, 0xa7, 0x7f, 0x02, 0x00,
+	0x00, 0xff, 0xff, 0x78, 0x26, 0x93, 0x24, 0x87, 0x04, 0x00, 0x00,
 }
