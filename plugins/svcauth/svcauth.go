@@ -6,12 +6,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/limbo-services/protobuf/gogoproto"
-	"github.com/limbo-services/protobuf/proto"
-	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
-	"github.com/limbo-services/protobuf/protoc-gen-gogo/generator"
+	"limbo.services/protobuf/gogoproto"
+	"limbo.services/protobuf/proto"
+	pb "limbo.services/protobuf/protoc-gen-gogo/descriptor"
+	"limbo.services/protobuf/protoc-gen-gogo/generator"
 
-	. "github.com/limbo-services/core/runtime/limbo"
+	. "limbo.services/core/runtime/limbo"
 )
 
 func init() {
@@ -75,7 +75,7 @@ func (g *svcauth) Generate(file *generator.FileDescriptor) {
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
 	g.contextPkg = imp.NewImport("golang.org/x/net/context")
-	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
+	g.runtimePkg = imp.NewImport("limbo.services/core/runtime/limbo")
 
 	for i, service := range file.FileDescriptorProto.Service {
 		g.generateService(file, service, i)

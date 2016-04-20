@@ -5,13 +5,13 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/limbo-services/protobuf/gogoproto"
-	"github.com/limbo-services/protobuf/proto"
-	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
-	"github.com/limbo-services/protobuf/protoc-gen-gogo/generator"
+	"limbo.services/protobuf/gogoproto"
+	"limbo.services/protobuf/proto"
+	pb "limbo.services/protobuf/protoc-gen-gogo/descriptor"
+	"limbo.services/protobuf/protoc-gen-gogo/generator"
 
-	. "github.com/limbo-services/core/runtime/limbo"
-	"github.com/limbo-services/core/runtime/router"
+	. "limbo.services/core/runtime/limbo"
+	"limbo.services/core/runtime/router"
 )
 
 // Paths for packages used by code generated in this file,
@@ -21,8 +21,8 @@ const (
 	grpcPkgPath       = "google.golang.org/grpc"
 	grpcCodesPkgPath  = "google.golang.org/grpc/codes"
 	httpPkgPath       = "net/http"
-	routerPkgPath     = "github.com/limbo-services/core/runtime/router"
-	runtimePkgPath    = "github.com/limbo-services/core/runtime/limbo"
+	routerPkgPath     = "limbo.services/core/runtime/router"
+	runtimePkgPath    = "limbo.services/core/runtime/limbo"
 	jujuErrorsPkgPath = "github.com/juju/errors"
 	jsonPkgPath       = "encoding/json"
 )

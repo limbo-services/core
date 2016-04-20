@@ -4,10 +4,10 @@ package limbo;
 option go_package = "limbo";
 
 import "google/protobuf/descriptor.proto";
-import "github.com/limbo-services/core/runtime/limbo/authn.proto";
-import "github.com/limbo-services/core/runtime/limbo/authz.proto";
-import "github.com/limbo-services/core/runtime/limbo/http.proto";
-import "github.com/limbo-services/core/runtime/limbo/sql.proto";
+import "limbo.services/core/runtime/limbo/authn.proto";
+import "limbo.services/core/runtime/limbo/authz.proto";
+import "limbo.services/core/runtime/limbo/http.proto";
+import "limbo.services/core/runtime/limbo/sql.proto";
 
 /*extend google.protobuf.FileOptions {
 }*/

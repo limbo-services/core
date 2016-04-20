@@ -11,8 +11,8 @@ import (
 
 	"golang.org/x/net/context"
 
-	"github.com/limbo-services/core/runtime/limbo"
-	"github.com/limbo-services/core/runtime/router"
+	"limbo.services/core/runtime/limbo"
+	"limbo.services/core/runtime/router"
 )
 
 func TestList(t *testing.T) {

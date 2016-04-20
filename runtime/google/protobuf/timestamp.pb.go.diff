@@ -6,11 +6,11 @@
  */
  package protobuf
  
--import proto "github.com/limbo-services/protobuf/proto"
+-import proto "limbo.services/protobuf/proto"
 +import (
 +	"time"
 +
-+	proto "github.com/limbo-services/protobuf/proto"
++	proto "limbo.services/protobuf/proto"
 +)
  import fmt "fmt"
  import math "math"

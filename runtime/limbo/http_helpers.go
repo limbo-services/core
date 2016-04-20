@@ -11,8 +11,8 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/metadata"
 
-	"github.com/limbo-services/protobuf/proto"
-	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
+	"limbo.services/protobuf/proto"
+	pb "limbo.services/protobuf/protoc-gen-gogo/descriptor"
 )
 
 const metadataHeaderPrefix = "Grpc-Metadata-"

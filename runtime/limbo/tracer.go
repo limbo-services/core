@@ -5,8 +5,8 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/codes"
 
-	"github.com/limbo-services/protobuf/gogogrpc"
-	"github.com/limbo-services/trace"
+	"limbo.services/protobuf/gogogrpc"
+	"limbo.services/trace"
 )
 
 func WithTracer() gogogrpc.ServerOption {

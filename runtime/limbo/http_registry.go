@@ -4,8 +4,8 @@ import (
 	"net/http"
 	"reflect"
 
-	"github.com/limbo-services/core/runtime/router"
-	"github.com/limbo-services/protobuf/gogogrpc"
+	"limbo.services/core/runtime/router"
+	"limbo.services/protobuf/gogogrpc"
 
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"

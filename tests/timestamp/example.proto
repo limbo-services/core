@@ -4,8 +4,8 @@ package limbo.tests;
 option go_package = "tests";
 
 import "google/protobuf/timestamp.proto";
-import "github.com/limbo-services/protobuf/gogoproto/gogo.proto";
-import "github.com/limbo-services/core/runtime/limbo/annotations.proto";
+import "limbo.services/protobuf/gogoproto/gogo.proto";
+import "limbo.services/core/runtime/limbo/annotations.proto";
 
 // Person holds all personal information for an account holder
 message Person {

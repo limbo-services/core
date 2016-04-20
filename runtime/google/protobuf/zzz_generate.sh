@@ -8,4 +8,4 @@ protoc \
   -I $PROTOC_INCL \
   -I $GOPATH/src \
   $PWD/*.proto \
-  --golimbo_out=Mgoogle/protobuf/descriptor.proto=github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor:$GOPATH/src/
+  --golimbo_out=Mgoogle/protobuf/descriptor.proto=limbo.services/protobuf/protoc-gen-gogo/descriptor:$GOPATH/src/

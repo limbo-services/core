@@ -9,12 +9,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/limbo-services/protobuf/proto"
-	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
-	"github.com/limbo-services/protobuf/protoc-gen-gogo/generator"
+	"limbo.services/protobuf/proto"
+	pb "limbo.services/protobuf/protoc-gen-gogo/descriptor"
+	"limbo.services/protobuf/protoc-gen-gogo/generator"
 
-	"github.com/limbo-services/core/runtime/limbo"
-	"github.com/limbo-services/core/runtime/router"
+	"limbo.services/core/runtime/limbo"
+	"limbo.services/core/runtime/router"
 )
 
 func init() {
@@ -73,7 +73,7 @@ func (g *jsonschema) P(args ...interface{}) { g.gen.P(args...) }
 func (g *jsonschema) Generate(file *generator.FileDescriptor) {
 	imp := generator.NewPluginImports(g.gen)
 	g.imports = imp
-	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
+	g.runtimePkg = imp.NewImport("limbo.services/core/runtime/limbo")
 	g.operations = nil
 	g.definitions = map[string]interface{}{}
 	g.dependencies = map[string][]string{}

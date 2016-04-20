@@ -5,8 +5,8 @@ import (
 	"encoding/json"
 	"strings"
 
-	"github.com/limbo-services/protobuf/proto"
-	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
+	"limbo.services/protobuf/proto"
+	pb "limbo.services/protobuf/protoc-gen-gogo/descriptor"
 )
 
 var definitions = map[string]SchemaDefinition{}

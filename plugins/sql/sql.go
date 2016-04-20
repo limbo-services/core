@@ -7,12 +7,12 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/limbo-services/protobuf/gogoproto"
-	"github.com/limbo-services/protobuf/proto"
-	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
-	"github.com/limbo-services/protobuf/protoc-gen-gogo/generator"
+	"limbo.services/protobuf/gogoproto"
+	"limbo.services/protobuf/proto"
+	pb "limbo.services/protobuf/protoc-gen-gogo/descriptor"
+	"limbo.services/protobuf/protoc-gen-gogo/generator"
 
-	"github.com/limbo-services/core/runtime/limbo"
+	"limbo.services/core/runtime/limbo"
 )
 
 func init() {
@@ -66,8 +66,8 @@ func (g *gensql) Generate(file *generator.FileDescriptor) {
 	g.sqlPkg = imp.NewImport("database/sql")
 	g.jsonPkg = imp.NewImport("encoding/json")
 	g.contextPkg = imp.NewImport("golang.org/x/net/context")
-	g.tracePkg = imp.NewImport("github.com/limbo-services/trace")
-	g.runtimePkg = imp.NewImport("github.com/limbo-services/core/runtime/limbo")
+	g.tracePkg = imp.NewImport("limbo.services/trace")
+	g.runtimePkg = imp.NewImport("limbo.services/core/runtime/limbo")
 	g.timePkg = imp.NewImport("time")
 	g.mysqlPkg = imp.NewImport("github.com/go-sql-driver/mysql")
 

@@ -4,7 +4,7 @@ syntax = "proto3";
 package limbo.tests;
 option go_package = "tests";
 
-import "github.com/limbo-services/core/runtime/limbo/annotations.proto";
+import "limbo.services/core/runtime/limbo/annotations.proto";
 
 service TestService {
 

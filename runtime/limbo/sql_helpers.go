@@ -4,9 +4,9 @@ import (
 	"regexp"
 	"strings"
 
-	"github.com/limbo-services/protobuf/proto"
-	pb "github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor"
-	"github.com/limbo-services/protobuf/protoc-gen-gogo/generator"
+	"limbo.services/protobuf/proto"
+	pb "limbo.services/protobuf/protoc-gen-gogo/descriptor"
+	"limbo.services/protobuf/protoc-gen-gogo/generator"
 )
 
 func CleanSQL(s string) string {

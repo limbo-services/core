@@ -3,7 +3,7 @@ package protobuf
 import (
 	"time"
 
-	"github.com/limbo-services/core/runtime/limbo"
+	"limbo.services/core/runtime/limbo"
 )
 
 func (t *Timestamp) Validate() error {

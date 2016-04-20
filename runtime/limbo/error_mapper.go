@@ -4,7 +4,7 @@ import (
 	"golang.org/x/net/context"
 	"google.golang.org/grpc"
 
-	"github.com/limbo-services/protobuf/gogogrpc"
+	"limbo.services/protobuf/gogogrpc"
 )
 
 type ErrorMapper interface {

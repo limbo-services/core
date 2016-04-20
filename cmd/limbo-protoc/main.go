@@ -52,8 +52,8 @@ func main() {
 
 	var opts []string
 	opts = append(opts, "plugins="+plugins)
-	opts = append(opts, "Mgoogle/protobuf/descriptor.proto=github.com/limbo-services/protobuf/protoc-gen-gogo/descriptor")
-	opts = append(opts, "Mgoogle/protobuf/timestamp.proto=github.com/limbo-services/core/runtime/google/protobuf")
+	opts = append(opts, "Mgoogle/protobuf/descriptor.proto=limbo.services/protobuf/protoc-gen-gogo/descriptor")
+	opts = append(opts, "Mgoogle/protobuf/timestamp.proto=limbo.services/core/runtime/google/protobuf")
 
 	var args []string
 	args = append(args, "-I", protocIncludeDir)
