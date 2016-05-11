@@ -33,7 +33,7 @@ import net_http "net/http"
 import encoding_json "encoding/json"
 import github_com_limbo_services_core_runtime_limbo "limbo.services/core/runtime/limbo"
 import github_com_juju_errors "github.com/juju/errors"
-import github_com_limbo_services_core_runtime_router "limbo.services/core/runtime/router"
+import github_com_limbo_services_core_runtime_router "limbo.services/router"
 
 import io "io"
 

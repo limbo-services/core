@@ -14,7 +14,7 @@ import (
 	"limbo.services/protobuf/protoc-gen-gogo/generator"
 
 	"limbo.services/core/runtime/limbo"
-	"limbo.services/core/runtime/router"
+	"limbo.services/router"
 )
 
 func init() {

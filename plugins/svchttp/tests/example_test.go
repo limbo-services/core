@@ -12,7 +12,7 @@ import (
 	"golang.org/x/net/context"
 
 	"limbo.services/core/runtime/limbo"
-	"limbo.services/core/runtime/router"
+	"limbo.services/router"
 )
 
 func TestList(t *testing.T) {

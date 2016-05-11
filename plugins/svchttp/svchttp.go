@@ -11,7 +11,7 @@ import (
 	"limbo.services/protobuf/protoc-gen-gogo/generator"
 
 	. "limbo.services/core/runtime/limbo"
-	"limbo.services/core/runtime/router"
+	"limbo.services/router"
 )
 
 // Paths for packages used by code generated in this file,
@@ -21,7 +21,7 @@ const (
 	grpcPkgPath       = "google.golang.org/grpc"
 	grpcCodesPkgPath  = "google.golang.org/grpc/codes"
 	httpPkgPath       = "net/http"
-	routerPkgPath     = "limbo.services/core/runtime/router"
+	routerPkgPath     = "limbo.services/router"
 	runtimePkgPath    = "limbo.services/core/runtime/limbo"
 	jujuErrorsPkgPath = "github.com/juju/errors"
 	jsonPkgPath       = "encoding/json"
