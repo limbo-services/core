@@ -399,6 +399,9 @@ func (g *svcauth) findMethods(file *generator.FileDescriptor, service *pb.Servic
 }
 
 func (g *svcauth) lookupMessageType(inputType *generator.Descriptor, path string) (typeName string) {
+	if path == "." {
+		return g.gen.TypeName(inputType)
+	}
 	partType := inputType
 	parts := strings.Split(path, ".")
 	lastIdx := len(parts) - 1
@@ -428,6 +431,11 @@ func (g *svcauth) getMessage(inputType *generator.Descriptor, path, input, outpu
 		goPath     string
 		isNullable = inputIsNullable
 	)
+
+	if path == "." {
+		g.P(output, ` = `, input)
+		return
+	}
 
 	goPath = input
 	if inputIsNullable {
