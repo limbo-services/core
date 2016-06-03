@@ -24,7 +24,7 @@ func WithTracer() gogogrpc.ServerOption {
 func wrapMethodWithTracer(srv *grpc.ServiceDesc, desc grpc.MethodDesc) grpc.MethodDesc {
 	name := "/" + srv.ServiceName + "/" + desc.MethodName + "/root"
 	h := desc.Handler
-	desc.Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error) (out interface{}, err error) {
+	desc.Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error, intc grpc.UnaryServerInterceptor) (out interface{}, err error) {
 		span, ctx := trace.New(ctx, name, trace.WithPanicGuard)
 		defer func(errPtr *error) {
 			if span.Failed && *errPtr == nil {
@@ -33,7 +33,7 @@ func wrapMethodWithTracer(srv *grpc.ServiceDesc, desc grpc.MethodDesc) grpc.Meth
 		}(&err)
 		defer span.Close()
 
-		return h(srv, ctx, dec)
+		return h(srv, ctx, dec, intc)
 	}
 	return desc
 }

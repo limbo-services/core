@@ -27,8 +27,8 @@ func WithErrorMapper(mapper ErrorMapper) gogogrpc.ServerOption {
 
 func wrapMethodWithErrorMapper(srv *grpc.ServiceDesc, desc grpc.MethodDesc, mapper ErrorMapper) grpc.MethodDesc {
 	h := desc.Handler
-	desc.Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error) (out interface{}, err error) {
-		res, err := h(srv, ctx, dec)
+	desc.Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error, intc grpc.UnaryServerInterceptor) (out interface{}, err error) {
+		res, err := h(srv, ctx, dec, intc)
 		if err != nil {
 			if e := mapper.HandleError(err); e != nil {
 				err = e

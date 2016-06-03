@@ -207,7 +207,7 @@ func WithAuthGuard(handler interface{}) gogogrpc.ServerOption {
 
 func wrapMethodWithAuth(authDesc MethodAuthDesc, desc *grpc.MethodDesc, handler interface{}) {
 	h := desc.Handler
-	desc.Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error) (interface{}, error) {
+	desc.Handler = func(srv interface{}, ctx context.Context, dec func(interface{}) error, intc grpc.UnaryServerInterceptor) (interface{}, error) {
 		return h(srv, ctx, func(msg interface{}) error {
 			if err := dec(msg); err != nil {
 				return err
@@ -238,7 +238,7 @@ func wrapMethodWithAuth(authDesc MethodAuthDesc, desc *grpc.MethodDesc, handler 
 			}
 
 			return nil
-		})
+		}, intc)
 	}
 }
 
