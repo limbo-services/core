@@ -304,7 +304,7 @@ func (g *svchttp) generateService(file *generator.FileDescriptor, service *pb.Se
 
 		if !api.stream {
 			g.P(`desc := &srvDesc.Methods[`, api.index, `]`)
-			g.P(`output, err := desc.Handler(srv, stream.Context(), stream.RecvMsg)`)
+			g.P(`output, err := desc.Handler(srv, stream.Context(), stream.RecvMsg, nil)`)
 			g.P(`if err == nil && output == nil {`)
 			g.P(`err = `, g.grpcPkg.Use(), `.Errorf(`, g.grpcCodesPkg.Use(), `.Internal, "internal server error")`)
 			g.P(`}`)
